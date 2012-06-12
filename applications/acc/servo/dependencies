@@ -1,0 +1,11 @@
+createtsshm.o: createtsshm.c include/tsshm.h
+drivemon.o: drivemon.c include/tsshm.h
+readtt.o: readtt.c /common/vme_sg_simple/vme_sg_simple.h
+openshm.o: openshm.c
+rmtsshm.o: rmtsshm.c include/tsshm.h
+checktrcmds.o: checktrcmds.c include/tsshm.h include/servo.h \
+ /common/include/stderrUtilities.h
+dmytrack.o: dmytrack.c include/tsshm.h /common/include/commonLib.h
+checkencoders.o: checkencoders.c include/tsshm.h \
+ include/checkencoders.h include/servo.h
+svdata.o: svdata.c include/tsshm.h
