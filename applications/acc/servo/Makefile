@@ -1,25 +1,4 @@
-# Makefile for Servo.
-#
-# CVS Log and RCS Identification of this version:
-# $Id: Makefile,v 1.62 2011/03/04 19:22:48 rwilson Exp $
-# $Log: Makefile,v $
-# Revision 1.62  2011/03/04 19:22:48  rwilson
-# Add poundscb
-#
-# Revision 1.61  2008/08/14 13:53:20  rwilson
-# Add createtsshm.c to SOURCES
-#
-# Revision 1.60  2008/05/09 18:44:06  rwilson
-# Add dump of previous state on unexpected drive shutdown
-#
-# Revision 1.59  2007/01/22 19:29:01  rwilson
-# put in rule for s_anti96com.o
-#
-# Revision 1.58  2006/06/15 19:30:18  rwilson
-# Add GLOBALINC for making depend
-#
-# Revision 1.57  2006/06/13 17:45:59  rwilson
-# Got rid of dersFaultNames
+# Makefile for the GLT version of Servo.
 #
 
 NEWSERVO=$(ACCAPP)/newServo/src
