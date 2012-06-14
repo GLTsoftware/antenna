@@ -35,7 +35,7 @@ All RM(rm) replaced by DSM(dsm).
 #include <termios.h>
 #include <pthread.h>
 #include <rpc/rpc.h>
-#include <smapopt.h>
+#include "smapopt.h"
 #include "novas.h"
 #include "track.h"
 #include "vme_sg_simple.h"
@@ -48,6 +48,7 @@ All RM(rm) replaced by DSM(dsm).
 #include "smadaemon.h"
 #include "commonLib.h"
 #include "stderrUtilities.h"
+#include "antennaPosition.h"
 
 #define DEBUG 0
 #define COORDINATES_SVC 1
@@ -100,12 +101,12 @@ int sigactionInt;
 pthread_t	CommandHandlerTID, CCDClientTID ;
 
 	struct sched_param param;
-	pthread_attr_t *attr,*attr2,*attr3,*attr4,*attr5;
+	pthread_attr_t attr;
 	int policy = SCHED_FIFO;
 
 unsigned long   window;
 
-	int antlist[RM_ARRAY_SIZE],dsm_status;
+	int dsm_status;
 
 int	first_time_spk=1; /* this variable is used for opening the 
 		ephemeris file only once, on  first pass */
@@ -130,7 +131,7 @@ double		pmaztiltAzoff,pmaztiltEloff;
 short 		interrupt_command_flag=0;
 char pointingParameter[20];
 int numParameters=0;
-int defaultTiltFlag,rdefaultTiltFlag;
+int setTiltFlag,defaultTiltFlag,rdefaultTiltFlag;
 char opticalValue[20],radioValue[20];
 
 double 	radian;
@@ -170,9 +171,7 @@ int	cal_flag=0;
 
 /*end of global variables***************************************************/
 
-void
-main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
 
     FILE            *fp_mount_model,*fp_tilt,*fp_tiltdc,*fp_polar;
 
@@ -544,7 +543,7 @@ DAEMONSET
 	*/
 
         /* initializing ref. mem. */
-        dsm_status=dsm_open(antlist);
+        dsm_status=dsm_open();
         if(dsm_status != DSM_SUCCESS) {
                 dsm_error_message(dsm_status,"dsm_open()");
 		fprintf(stderr,"Could not open reflective memory.");
@@ -558,8 +557,8 @@ DAEMONSET
                 exit(1);
                 }
  
-	pthread_attr_init(attr);
-	if (pthread_create(&CommandHandlerTID, attr, CommandHandler,
+	pthread_attr_init(&attr);
+	if (pthread_create(&CommandHandlerTID, &attr, CommandHandler,
 			 (void *) 0) == -1) { 
 	perror("main: pthread_create CommandHandler");
 	exit(-1);
@@ -829,7 +828,7 @@ new_source:
 /* write sol_sys_flag to DSM */
         dummyshortint=(short)sol_sys_flag;
         dsm_status=dsm_write(DSM_HOST,"DSM_SOLSYS_FLAG_S",&dummyshortint);
-        if(dsm_status != RM_SUCCESS) {
+        if(dsm_status != DSM_SUCCESS) {
                 dsm_error_message(dsm_status,"dsm_write() solsysflag");
                 }
 
@@ -995,7 +994,7 @@ beginning:
                      if(!strcmp(pointingParameter,"TiltFlag")) {
                      defaultTiltFlag=(int)atof(opticalValue);
                      rdefaultTiltFlag=(int)atof(radioValue);
-		     setTiltflag=defaultTiltFlag;
+		     setTiltFlag=defaultTiltFlag;
                         numParameters++;
                      }
                      if(!strcmp(pointingParameter,"Date")) {
@@ -1478,7 +1477,7 @@ for the actual positions*/
 	if(sunDistance(az_disp,el_disp,sunaz,sunel)<=SUNLIMIT) {
 
 		strcpy(lastCommand,"Standby - Sun Limit (cmd)");
-		SendLastCommandToRM(lastCommand);
+		SendLastCommandToDSM(lastCommand);
             	strcpy(messg, " Standing by. Sun Limit (cmd)");
 		SendMessageToDSM(messg);
 	 } /* sun limit check  with commanded position */
@@ -1777,16 +1776,16 @@ if(sun_avoid_flag==1) {
                                 tval->tm_sec);
 
 	dsm_status=dsm_write(DSM_HOST,"DSM_CCD_FITS_FILENAME_C100",snamefits);
-	if(dsm_status != RM_SUCCESS) {
+	if(dsm_status != DSM_SUCCESS) {
                 dsm_error_message(dsm_status,"dsm_write() filename");
                 }
 
-	dsm_status=dsm_write(DSM_ANT_0,"RM_SPECTRAL_TYPE_C10",sptype);
+	dsm_status=dsm_write(DSM_HOST,"RM_SPECTRAL_TYPE_C10",sptype);
 	if(dsm_status != DSM_SUCCESS) {
                 dsm_error_message(dsm_status,"dsm_write() sptype");
                 }
 	dsm_status=dsm_write(DSM_HOST,"DSM_VISUAL_MAGNITUDE_F",&magnitude);
-	if(dsm_status != RM_SUCCESS) {
+	if(dsm_status != DSM_SUCCESS) {
                 dsm_error_message(dsm_status,"dsm_write() magnitude");
                 }
 
@@ -1881,8 +1880,8 @@ for holography mapping */
 	case 'T':
 	strcpy(lastCommand,"Az commanded ");
 	SendLastCommandToDSM(lastCommand);
-        dsm_status=dsm_read(DSM_HOST,"DSM_COMMANDED_AZ_DEG_D",&commanded_az,&timeStamp,&timeStamp);
-        dsm_status=dsm_read(DSM_HOST,"DSM_COMMANDED_EL_DEG_D",&commanded_el,&timeStamp,&timeStamp);
+        dsm_status=dsm_read(DSM_HOST,"DSM_COMMANDED_AZ_DEG_D",&commanded_az,&timeStamp);
+        dsm_status=dsm_read(DSM_HOST,"DSM_COMMANDED_EL_DEG_D",&commanded_el,&timeStamp);
 	azelCommandFlag=1;
 
 		icount=0;
@@ -1999,7 +1998,7 @@ for holography mapping */
 	SendLastCommandToDSM(lastCommand);
 	dsm_status=dsm_read(DSM_HOST,"DSM_SOURCE_LENGTH_S",&slength,&timeStamp);
 
-	dsm_status=dsm_read(DSM_HOST,"DSM_SOURCE_C34", sname);
+	dsm_status=dsm_read(DSM_HOST,"DSM_SOURCE_C34", sname,&timeStamp);
 	azelCommandFlag=0;
 
 	dsm_status=dsm_read(DSM_HOST,"DSM_CMD_SOURCE_FLAG_L", &newSourceFlag,&timeStamp);
@@ -2244,8 +2243,8 @@ fprintf(fp_debug, "%lf %lf %d %d %d %lf %lf %lf %lf %d %d %d %d %d\n", tjd_disp,
 	sleep(1);
     }				/* this is the big while loop */
 
-
-}				/* end of main Loop */
+return(0);
+}				/* end of main */
 
 void
 split(unsigned long * lw, unsigned short * sw1, unsigned short * sw2)
@@ -2511,7 +2510,7 @@ bug: 3 aug 2009: 1st source is skipped
 	if(radio_flag==1) {
         if (end_of_file!=14) {
 	strcpy(messg, "Source catalog is corrupted. ");
-        SendMessageToRM(messg);
+        SendMessageToDSM(messg);
 	fprintf(stderr,"%s\n",messg);
 	strcpy(operatorErrorMessage, "Source catalog is corrupted.");
 	  sendOpMessage(OPMSG_WARNING, 10, 30, operatorErrorMessage);
@@ -2532,7 +2531,7 @@ bug: 3 aug 2009: 1st source is skipped
     fclose(fp2);
 }
 
-void SendMessageToRM(char *messg)
+void SendMessageToDSM(char *messg)
 {
 int messagelength;
 char blank[100];
@@ -2542,7 +2541,7 @@ dsm_status=dsm_write(DSM_HOST,"DSM_TRACK_MESSAGE_C100",blank);
 dsm_status=dsm_write(DSM_HOST,"DSM_TRACK_MESSAGE_C100",messg);
 }
 
-void SendLastCommandToRM(char *lastCommand)
+void SendLastCommandToDSM(char *lastCommand)
 {
 int messagelength;
 char blank[100];
@@ -2570,15 +2569,20 @@ return d;
 void *CommandHandler()
 {
 char command[30];
+/*
 char name[DSM_NAME_LENGTH];
 int ant=DSM_HOST;
+*/
+time_t timeStamp;
 
+/*
 	sprintf(name,"DSM_CONSOLE_COMMAND_FLAG_S");
+*/
 
 	while(1)
 	{
 	
-	dsm_status=dsm_read_wait(&ant,name,&command_flag,&timeStamp);
+	dsm_status=dsm_read_wait(DSM_HOST,"DSM_CONSOLE_COMMAND_FLAG_S",&command_flag);
         if(dsm_status != DSM_SUCCESS) {
                 dsm_error_message(dsm_status,"dsm_read_wait()");
                 exit(1);
@@ -2592,7 +2596,7 @@ int ant=DSM_HOST;
 	if(command_flag==0)
 	{
 	dsm_status=dsm_read(DSM_HOST,"DSM_COMMANDED_TRACK_COMMAND_C30",command,&timeStamp);
-        if(dsm_status != RM_SUCCESS) {
+        if(dsm_status != DSM_SUCCESS) {
                 dsm_error_message(dsm_status,"dsm_read()");
                 exit(1);
         }
@@ -2603,7 +2607,7 @@ int ant=DSM_HOST;
 
 	} /* while */
 
-	pthread_detach(&CommandHandlerTID);
+	pthread_detach(CommandHandlerTID);
 	pthread_exit((void *) 0);
 }
 
