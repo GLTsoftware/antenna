@@ -31,6 +31,8 @@ void bzero(void *s, int n);	/* This should be in string.h, but isn't */
 #include "tsshm.h"
 #include "servo.h"
 #include "vme_sg_simple.h"
+#include "dsmsubs.h"
+#include "canbus.h"
 #if ! GLT
 #include "syncclock32.h"
 #include "s_constants.h"
@@ -491,6 +493,7 @@ int main(int argc, char *argv[]) {
 
 #if GLT
   SetupCanBus();
+  SafeOpenDsm();
 #else /* GLT */
   /* initializing ref. mem. */
 
