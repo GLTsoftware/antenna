@@ -9,6 +9,7 @@
 #include <sys/ioctl.h>
 #include <errno.h>
 #include "tpmc816.h"
+#include "tsshm.h"
 #include "servo.h"
 #include "canbus.h"
 
@@ -98,8 +99,8 @@ int ReadCANValue(int msgID, void *value, int len) {
   }
   memset(MsgBuf.Data, 0, 8);
   if(read(canfd, &MsgBuf, sizeof(MsgBuf)) > 0 && MsgBuf.Identifier == msgID) {
-    if len > 8) len = 8;
-    if(len > MsgBuf.Data) len = MsgBuf.Data;
+    if(len > 8) len = 8;
+    if(len > MsgBuf.MsgLen) len = MsgBuf.MsgLen;
     memcpy(value, MsgBuf.Data, len);
 #if 0
     int i;
@@ -130,6 +131,7 @@ int SetCANValue(int msgID, void *data, int len) {
     perror(msg);
     return(0);
   }
+  return(1);
 }
 
 #if USE_MAIN

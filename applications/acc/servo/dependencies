@@ -6,6 +6,13 @@ rmtsshm.o: rmtsshm.c include/tsshm.h
 checktrcmds.o: checktrcmds.c include/tsshm.h include/servo.h \
  /common/include/stderrUtilities.h
 dmytrack.o: dmytrack.c include/tsshm.h /common/include/commonLib.h
-checkencoders.o: checkencoders.c include/tsshm.h \
- include/checkencoders.h include/servo.h
 svdata.o: svdata.c include/tsshm.h
+canbus.o: canbus.c \
+ /usr/lib/gcc-lib/ppc-xcoff-lynxos/2.9-gnupro-98r2/../../../../include/tpmc816.h \
+ include/tsshm.h include/servo.h include/canbus.h
+heartbeat.o: heartbeat.c /application/iP480/include/iP480.h
+servo.o: servo.c include/tsshm.h include/servo.h \
+ /common/vme_sg_simple/vme_sg_simple.h include/dsmsubs.h \
+ include/canbus.h include/heartbeat.h /common/include/smadaemon.h \
+ /common/include/commonLib.h include/checkencoders.h \
+ /common/include/stderrUtilities.h /common/include/dsm.h

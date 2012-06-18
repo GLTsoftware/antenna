@@ -111,10 +111,11 @@ void CheckTrCmds(void) {
     int tmpEl, tmpElVel, tmpAz, tmpAzVel;
     int ssm;
     char msg[80];
+    static int msgSent = 0;
 
     if(tsshm->msecCmd != tsshm->msecAccept) {
       if(escaping == MOVING_TO_SAFETY) {
-        if(abs(encAz - escAz) < (MAS/2048) && abs(encEl - escEl) < (MAS/2048)) {
+        if(abs(lastAz - escAz) < (MAS/2048) && abs(lastEl - escEl) < (MAS/2048)) {
             escaping = HOLDING_SAFE_POS;
 	    goto CheckTrCmdsEnd;
         }
@@ -127,15 +128,15 @@ void CheckTrCmds(void) {
         trElRaw = tsshm->el;
         if(tsshm->az != tsshm->az || tsshm->azVel != tsshm->azVel ||
                 tsshm->el != tsshm->el || tsshm->elVel != tsshm->elVel) {
-            if(azState > STOPPING) {
-                azState = STOPPING;
-                beepCnt = 2;
+            if(azState > STOPPING2) {
+                azState = STOPPING1;
+		msgSent = 1;
             }
-            if(elState > STOPPING) {
-                elState = STOPPING;
-                beepCnt = 2;
+            if(elState > STOPPING2) {
+                elState = STOPPING1;
+		msgSent = 1;
             }
-            if(beepCnt == 2) {
+            if(!msgSent) {
                 vSendOpMessage(OPMSG_SEVERE, 19, 60, "Received NaN from Track");
                 ErrPrintf("Track sent NaN az %.4f azVel %.4f el %.4f elVel "
 		    "%.4f\n", tsshm->az/(double)MAS, tsshm->azVel/(double)MAS,
@@ -144,6 +145,8 @@ void CheckTrCmds(void) {
             trAzVelRaw = tsshm->azVel;
             trElVelRaw = tsshm->elVel;
 	    goto CheckTrCmdsEnd;
+	} else {
+	  msgSent = 0;
         }
         tmpAz = tsshm->az;
         trAzVelRaw = tsshm->azVel;
@@ -205,43 +208,39 @@ void CheckTrCmds(void) {
         ssm = SunSafeMinutes(tmpAz, tmpEl);
         if(ssm == 0) {
 #if ENFORCE_REQUIRED_SUN_SAFE_MINUTES
-	  if((ssm = SunSafeMinutes(encAz, encEl)) >= 0 &&
+	  if((ssm = SunSafeMinutes(lastAz, lastEl)) >= 0 &&
 		  ssm < requiredSunSafeMinutes) {
 #else /* ENFORCE_REQUIRED_SUN_SAFE_MINUTES */
-	  if(SunSafeMinutes(encAz, encEl) != 0) {
+	  if(SunSafeMinutes(lastAz, lastEl) != 0) {
 #endif /* ENFORCE_REQUIRED_SUN_SAFE_MINUTES */
 	    posInSunAvoid = 1;
-            if(antInArray < IN_ARRAY) {
-                sprintf(msg,
-                    "Ant %d cmd pos too close to Sun - Ignoring it",
-                    myAntennaNumber);
+              sprintf(msg, "Antenna cmd pos too close to Sun - Ignoring it");
                 vSendOpMessage(OPMSG_SEVERE, 21, 5, msg);
-            }
 	    goto CheckTrCmdsEnd;
 	  } else {
 	    int sunHa, sunDec, curHa, curDec;
 
 	    dprintf("Starting from unsafe position\n");
 	    AEtoHD(sunAz, sunEl, &sunHa, &sunDec);
-	    AEtoHD(encAz, encEl, &curHa, &curDec);
+	    AEtoHD(lastAz, lastEl, &curHa, &curDec);
 	    curDec = sunDec + ((curDec < sunDec)? -SAFELIMIT: SAFELIMIT);
 	    HDtoAE(curHa, curDec, &tmpAz, &tmpEl);
-	    if(encAz < 0 && tmpAz > 180*MAS) tmpAz -= 360*MAS;
+	    if(lastAz < 0 && tmpAz > 180*MAS) tmpAz -= 360*MAS;
 	    dprintf("Trying  %10.4fA %10.4fE %10.4fH %10.4fD)\n",
 		(double)tmpAz/MAS, (double)tmpEl/MAS,
 		(double)curHa/MAS, (double)curDec/MAS);
 	    if(tmpAz < tsshm->ccwLimit || tmpAz > tsshm->cwLimit ||
 		tmpEl < tsshm->lowerLimit || tmpEl > tsshm->upperLimit ||
-		abs(tmpAz - encAz) > 110*MAS){
+		abs(tmpAz - lastAz) > 110*MAS){
 	      curDec = sunDec + ((curDec < sunDec)? SAFELIMIT: -SAFELIMIT);
 	      HDtoAE(curHa, curDec, &tmpAz, &tmpEl);
-	      if(encAz < 0 && tmpAz > 180*MAS) tmpAz -= 360*MAS;
+	      if(lastAz < 0 && tmpAz > 180*MAS) tmpAz -= 360*MAS;
 	      dprintf("Trying  %10.4fA %10.4fE %10.4fH %10.4fD)\n",
 		(double)tmpAz/MAS, (double)tmpEl/MAS,
 		(double)curHa/MAS, (double)curDec/MAS);
 	      if(tmpAz < tsshm->ccwLimit || tmpAz > tsshm->cwLimit ||
 		  tmpEl < tsshm->lowerLimit || tmpEl > tsshm->upperLimit ||
-		    abs(tmpAz - encAz) > 110*MAS){
+		    abs(tmpAz - lastAz) > 110*MAS){
 		tmpAz = 10*MAS;
 		tmpEl = 45*MAS;
 	      }
@@ -252,7 +251,7 @@ void CheckTrCmds(void) {
 	    ErrPrintf("Escaping from sun at %8.3f %8.3f to %8.3f %8.3f "
 		"from %8.3f %8.3f\n", (double)sunAz/MAS, (double)sunEl/MAS,
 		 (double)escAz/MAS, (double)escEl/MAS,
-		 (double)encAz/MAS, (double)encEl/MAS);
+		 (double)lastAz/MAS, (double)lastEl/MAS);
 	  }
         } else {
 	    posInSunAvoid = 0;
@@ -263,7 +262,7 @@ void CheckTrCmds(void) {
 #endif
         }
         if(holding) {
-            if(abs(encAz - trAz) < 2*MAS && abs(encEl - trEl) < 1*MAS) {
+            if(abs(lastAz - trAz) < 2*MAS && abs(lastEl - trEl) < 1*MAS) {
                 holding = 0;
             } else {
 		goto CheckTrCmdsEnd;
@@ -276,7 +275,7 @@ void CheckTrCmds(void) {
             goto doit;
         }
         ClassifyPosition(tmpAz, tmpEl, &dest);
-        ClassifyPosition(encAz, encEl, &start);
+        ClassifyPosition(lastAz, lastEl, &start);
 #ifdef USE_MAIN
         printf("Moving from av sun (%s, %s)(%s, %s) to (%s, %s)(%s, %s)"
 		" az hwidth %.2f\n",
@@ -410,12 +409,10 @@ doit:
     }
 CheckTrCmdsEnd:
     if(escaping) {
-        if(antInArray < IN_ARRAY) {
-            sprintf(msg, "Ant %d cmd and actual positions too close to sun - "
-		"Moving to %9.4f %9.4f\n", myAntennaNumber, (double)escAz/MAS,
+        sprintf(msg, "Antenna cmd and actual positions too close to sun - "
+		"Moving to %9.4f %9.4f\n", (double)escAz/MAS,
 		(double)escEl/MAS);
-            vSendOpMessage(OPMSG_SEVERE, 15, 5, msg);
-        }
+        vSendOpMessage(OPMSG_SEVERE, 15, 5, msg);
         avoidingSun = ESCAPING_FROM_SUN;
     } else {
 	avoidingSun = holding;
@@ -636,7 +633,7 @@ int SunSafeMinutes(int az, int el) {
 #ifdef USE_MAIN
 TrackServoSHM sharedMem;		/* Local pointer to shared memory */
 TrackServoSHM *tsshm = &sharedMem;	/* Local pointer to shared memory */
-int encAz = 100*MAS, encEl = 30*MAS;	/* Values from the encoders (mas) */
+int lastAz = 100*MAS, lastEl = 30*MAS;	/* Values from the encoders (mas) */
 int trAz = 100*MAS, trAzVel = 0, trEl = 30*MAS, trElVel = 0;
 enum DRVSTATE azState, elState;
 int azRockerBits;
@@ -658,7 +655,7 @@ void usage(void) {
            "r run\np print\n"
            "sa sunAz sunEl\nsh sunHa sunDec\nss sunSafeMinutes\n"
            "ta srcAz srcEl\nth srcHa srcDec\n"
-           "aa encAz encEl\nah encHa encDec\n");
+           "aa lastAz lastEl\nah lastHa lastDec\n");
 }
 
 
@@ -675,9 +672,9 @@ int main(int argc, char *argv[]) {
 
     readline_initialize_everything();
     read_history(HIST_FILE);
-    tsshm->az = trAz = encAz;
+    tsshm->az = trAz = lastAz;
     tsshm->azVel = 0;
-    tsshm->el = trEl = encEl;
+    tsshm->el = trEl = lastEl;
     tsshm->elVel = 0;
     tsshm->lowerLimit = 11*MAS;
     tsshm->upperLimit = 87.5*MAS;
@@ -725,13 +722,13 @@ int main(int argc, char *argv[]) {
             tsshm->el = c2;
 	    Run();
         } else if(strcmp(cmd, "aa") == 0) {
-            tsshm->az = trAz = encAz = a1*MAS;
-            tsshm->el = trEl = encEl = a2*MAS;
+            tsshm->az = trAz = lastAz = a1*MAS;
+            tsshm->el = trEl = lastEl = a2*MAS;
         } else if(strcmp(cmd, "ah") == 0) {
             HDtoAE((int)(a1*MAS), (int)(a2*MAS), &c1, &c2);
 	    if(wrap && c1 > tsshm->ccwLimit + 360*MAS) c1 -= 360*MAS;
-            encAz = c1;
-            encEl = c2;
+            lastAz = c1;
+            lastEl = c2;
 	} else {
 	    printf("No command %s\n", cmd);
         }
@@ -776,15 +773,15 @@ void Run(void) {
 
     hcount = 0;
     do {
-	ssm = SunSafeMinutes(encAz, encEl);
+	ssm = SunSafeMinutes(lastAz, lastEl);
 	if(ssm == 0) {
 	    printf("Present antenna position is unsafe, continuing\n");
 	}
 	printf("Ssm = %d\n", ssm);
 	tsshm-> msecCmd += 10;
 	CheckTrCmds();
-	encAz = trAz;
-	encEl = trEl;
+	lastAz = trAz;
+	lastEl = trEl;
 	PrintAll();
 	if(hcount++ > 3) {
 	    printf("Loop encountered, quitting\n");
@@ -830,9 +827,9 @@ void PrintAll(void) {
     AEtoHD(tsshm->az, tsshm->el, &c1, &c2);
     printf(fmt, "Track", (double)tsshm->az/MAS, (double)tsshm->el/MAS,
            (double)c1/MAS, (double)c2/MAS);
-    AEtoHD(encAz, encEl, &c1, &c2);
-    printf(fmt, "Enc", (double)encAz/MAS, (double)encEl/MAS,
+    AEtoHD(lastAz, lastEl, &c1, &c2);
+    printf(fmt, "Enc", (double)lastAz/MAS, (double)lastEl/MAS,
            (double)c1/MAS, (double)c2/MAS);
     printf("Sun dist %.2f  holding %d  escaping %d\n",
-	(float)SunDistance(encAz, encEl)/MAS, holding, escaping);
+	(float)SunDistance(lastAz, lastEl)/MAS, holding, escaping);
 }

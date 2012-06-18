@@ -1,105 +1,8 @@
 /*
- * CVS Log and RCS Identification of this version:
- * $Id: servo.h,v 1.35 2007/02/06 00:00:25 rwilson Exp $
- * $Log: servo.h,v $
- * Revision 1.35  2007/02/06 00:00:25  rwilson
- * collision pad changes
- *
- * Revision 1.34  2006/06/29 21:48:51  rwilson
- * Timing diagnostica added, getAntennaList() removed
- *
- * Revision 1.33  2006/05/18 14:55:20  rwilson
- * move sun avoidance defs to servo.h
- *
- * Revision 1.32  2006/05/18 14:33:46  rwilson
- * Escape from avoidance zone, Op messages if unsafe
- *
- * Revision 1.31  2006/01/05 21:08:18  rwilson
- * OpenEncoders(reset) makes resetting Heidenhain encoders and EnDat card optional
- *
- * Revision 1.30  2005/10/25 15:24:31  rwilson
- * Report sun distance if in avoid zone
- *
- * Revision 1.29  2005/09/28 12:38:25  rwilson
- * put vSendOpMessage so when verbose, no op msgs
- *
- * Revision 1.28  2005/09/13 21:23:14  rwilson
- * change SunSafeTime to return minutes and remane SunSafeMinutes
- *
- * Revision 1.27  2005/09/01 18:13:26  rwilson
- * Rename sunSafeTime to SunSafeTime
- *
- * Revision 1.26  2005/08/09 13:24:25  rwilson
- * put in warning about sun safe minutes, IN_ARRAY stuff
- *
- * Revision 1.25  2005/07/29 16:20:18  rwilson
- * Fix bug, prepare to call SunSafeTime when tracking off
- *
- * Revision 1.24  2005/07/29 15:22:14  rwilson
- * moved CheckTrCmds to a separate src file, starting to check the sun
- *
- * Revision 1.23  2005/07/21 22:45:30  rwilson
- * Add sun safe vars
- *
- * Revision 1.22  2005/07/14 00:42:07  rwilson
- * add external declarations for some variables and subroutines for CheckTrCmds, define MAS_PER_RAD
- *
- * Revision 1.21  2005/05/20 17:25:23  rwilson
- * Add declaration for readencoders package
- *
- * Revision 1.20  2005/01/12 23:18:00  rwilson
- * Reduce elevation encoder diff tolerance to reach higher elevation, more op mesages
- *
- * Revision 1.19  2003/12/19 16:53:03  rwilson
- * Double EL_ENCODER_DIFF_TOLERANCE
- *
- * Revision 1.18  2003/08/05 13:03:56  rwilson
- * add amax to command line options
- *
- * Revision 1.17  2003/06/04 00:39:12  rwilson
- * larger, more rationsl ENCODER_DIFF_TOLLERANCE
- *
- * Revision 1.16  2002/12/04 19:01:50  rwilson
- * Rocker report
- *
- * Revision 1.15  2002/11/12 20:08:41  rwilson
- * extern variables for checkencoders
- *
- * Revision 1.14  2002/09/26 20:56:16  rwilson
- * bounds on vel and pos, more RM vars
- *
- * Revision 1.13  2002/01/16 22:08:01  rwilson
- * Ant 7 more normal
- *
- * Revision 1.12  2001/10/02 17:52:14  rwilson
- * fix compiled in az & el limits
- *
- * Revision 1.11  2001/09/01 15:13:27  rwilson
- * put in slowservo
- *
- * Revision 1.10  2001/06/29 19:02:29  rwilson
- * Todd's VMAX stuff for antenna 7
- *
- * Revision 1.9  2001/06/29 18:59:04  rwilson
- * Todd's VMAX stuff for antenna 7
- *
- * Revision 1.8  2001/05/31 19:51:08  rwilson
- * change ENC_TURN to 2^23
- *
- * Revision 1.7  2000/10/18 14:27:37  rwilson
- * use common OpenShm, rename tsshm.h
- *
- * Revision 1.6  2000/09/24 18:38:06  rwilson
- * Faultword to stderr, others
- *
- * Revision 1.5  2000/09/01 00:50:06  rwilson
- * more error messages
- *
- * Revision 1.4  2000/06/13 21:19:00  rwilson
- * Added cvs $ and $
- *
+ * Servo for the GLT with the original ACU
  */
 
+#if !GLT
 #define MAX_CMD_AZ 358*MAS
 #define MIN_CMD_AZ -175*MAS
 #define MAX_CMD_EL 88.75*MAS
@@ -156,9 +59,13 @@
  */
 #define AZ_VCRIT (AZ_MIN_HTIME * AZ_ACC_CONST / 500.)
 #define EL_VCRIT (EL_MIN_HTIME * EL_ACC_CONST / 500.)
+#endif /* ! GLT */
 
+#define AZ_AMAX (5*MAS)		/* For single motor operation. */
+#define EL_AMAX (8.71095*MAS)
 #define MAS (3600000)
 
+#if ! GLT
 #define POS_TOLERANCE 5000	/* Position change to force shaping (mas) */
 #define VEL_TOLERANCE 5000	/* Velocity change to force shaping (mas/sec) */
 
@@ -190,6 +97,7 @@
 #define OLD_EL_LIM_ENC_TURN (4096.*OLD_EL_LIM_ENC_GR)
 #define OLD_EL_LIM_ENC_TO_MAS (MAS*360./OLD_EL_LIM_ENC_TURN)
 #endif
+#endif /* ! GLT */
 
 #define EXP_HALF (1.64872127070012819416)
 #define R (180./M_PI)
@@ -222,18 +130,20 @@ enum IN_ARRAY_STATE {NOT_IN_ARRAY = 0, LOW_IN_ARRAY, IN_ARRAY};
 enum IN_ARRAY_STATE StatusInArray(void);
 
 extern TrackServoSHM *tsshm;	/* Local pointer to shared memory */
-extern int encAz, encEl;	/* Values read from the encoders (mas) */
+extern int lastAz, lastEl;	/* Values read from the ACU (mas) */
 extern enum DRVSTATE azState, elState;
-extern int azRockerBits;
 extern int trAzRaw, trAzVelRaw, trElRaw, trElVelRaw;
 extern int trAz, trAzVel, trEl, trElVel;
 extern int trMsecCmd;			/* Time of last command in msec */
 extern double trAzVmax, trElVmax;	/* Max allowable command velocities */
-extern double az_amax, el_amax;
 extern int trAzVelBad, trElVelBad;
+extern int azRockerBits;
+extern double az_amax, el_amax;
+#if ! GLT
 extern int beepCnt;
+extern int myAntennaNumber;
+#endif /* ! GLT */
 extern short requiredSunSafeMinutes;	/* # min ahead of sun zone to avoid */
 extern int presentSunSafeMinutes;	/* # min ahead of sun zone now */
 extern int posInSunAvoid;		/* Current posn from Track in avoid */
-extern int myAntennaNumber;
 extern int verbose;

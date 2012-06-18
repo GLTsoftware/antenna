@@ -22,7 +22,7 @@
 #endif
 #include <fcntl.h>
 #include <sys/ioctl.h>
-#include "../include/iP480.h"
+#include "iP480.h"
 
 /* Things for the couinter device */
 char cntrName[] = "/dev/iP480_0";
@@ -33,7 +33,7 @@ iP480_result_t readArg = {0,1};
 
 /* Open the counter device and set up the counter mode and load value
  */
-void openCntr(void) {
+void OpenCntr(void) {
 
     if(cntrfd == 0) {
 	if((cntrfd = open(cntrName, O_RDONLY, 0)) < 0) {
@@ -59,7 +59,7 @@ void openCntr(void) {
     }
 }
 
-void readCntr(void) {
+void ReadCntr(void) {
     if(read(cntrfd, &readArg, sizeof(readArg)) != sizeof(readArg)) {
 	perror("Reading counter");
 	exit(5);

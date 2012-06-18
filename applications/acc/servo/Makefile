@@ -7,15 +7,15 @@ CC=gcc
 #CFLAGS=-c -g -Wall -Iinclude
 CFLAGS=-c -O -Wall -Iinclude
 VMESG=$(COMMON)/vme_sg_simple
-IPEINC=$(ACCAPP)/iPEncoder/include
+IP480INC=$(ACCAPP)/iP480/include
 NSINC=$(NEWSERVO)/include
 MONINC=$(HALAPP)/cursesmonitor
 ANTPAGE2=/usr/PowerPC/applications/hal/cursesmonitor/antPage2.o
 DSMLD= $(COMMONLIB)/libdsm.a -lrpc -lnetinet
-NSINCLUDES=$(NSINC)/s_cmd2.h $(NSINC)/s_anti96com.h $(NSINC)/s_constants.h \
-	$(NSINC)/palmpilot.h
+#NSINCLUDES=$(NSINC)/s_cmd2.h $(NSINC)/s_anti96com.h $(NSINC)/s_constants.h \
+#	$(NSINC)/palmpilot.h
 #SOURCES=servo.c svdata.c dmytrack.c tsshmdump.c rmtsshm.c tracking_err.c \
-#	readtt.c rmvalue.c drivemon.c rmdrivemon.c rmsubs.c checkencoders.c \
+#	readtt.c rmvalue.c drivemon.c rmdrivemon.c rmsubs.c \
 #	readencoders.c monitortt.c ttalarmcheck.c recordencoders.c \
 #	checktrcmds.c readsc32.c $(NEWSERVO)/s_anti96com.c createtsshm.c
 #BINS=$(BINDIR)/servo $(BINDIR)/svdata $(BINDIR)/dmytrack \
@@ -28,24 +28,25 @@ NSINCLUDES=$(NSINC)/s_cmd2.h $(NSINC)/s_anti96com.h $(NSINC)/s_constants.h \
 #	$(BINDIR)/dmyservo $(BINDIR)/servotodd $(BINDIR)/slowservo
 
 SOURCES=createtsshm.c drivemon.c readtt.c openshm.c rmtsshm.c checktrcmds.c \
-	dmytrack.c checkencoders.c svdata.c canbus.c heartbeat.c servo.c
+	dmytrack.c svdata.c canbus.c heartbeat.c servo.c
 BINS=$(BINDIR)/createtsshm $(BINDIR)/drivemon $(BINDIR)/readtt \
-	$(BINDIR)/rmtsshm $(BINDIR)/dmytrack $(BINDIR)/svdata
+	$(BINDIR)/rmtsshm $(BINDIR)/dmytrack $(BINDIR)/svdata $(BINDIR)/servo
 
-all: $(BINS) $(COMMONINC)/tsshm.h
+all: $(BINS) #$(COMMONINC)/tsshm.h
 #	/application/bin/settrackservo
 
-$(BINDIR)/servo: servo.o openshm.o canbus.o heartbeat.o\
-	checkencoders.o readencoders.o checktrcmds.o\
-	$(COMMONLIB)/commonLib
-	$(CC) -o $(BINDIR)/servo servo.o openshm.o\
-		$(NEWSERVO)/s_anti96com.o $(COMMONLIB)/rm.o\
-		rmsubs.o $(COMMONLIB)/commonLib checkencoders.o \
-		readencoders.o checktrcmds.o -lrpc -lnetinet
+$(BINDIR)/servo: servo.o openshm.o canbus.o heartbeat.o dsmsubs.o \
+	 checktrcmds.o $(COMMONLIB)/commonLib
+	$(CC) -o $(BINDIR)/servo servo.o openshm.o $(COMMONLIB)/commonLib \
+	checktrcmds.o canbus.o dsmsubs.o heartbeat.o -lrpc -lnetinet
 
 servo.o:
-	$(CC) $(CFLAGS) -DSIMULATING=0 -DSLOW=0 -I$(IPEINC) \
+	$(CC) $(CFLAGS) -DSIMULATING=0 -DSLOW=0 -I$(GLOBALINC) \
 		-I$(NSINC) -I$(COMMONINC) -o servo.o servo.c
+
+servo.pp:
+	$(CC) $(CFLAGS) -E -DSIMULATING=0 -DSLOW=0 -I$(GLOBALINC) \
+		-I$(NSINC) -I$(COMMONINC)  servo.c >servo.pp
 
 poundscb: poundscb.o $(NEWSERVO)/s_anti96com.o
 	$(CC) -o poundscb poundscb.o $(NEWSERVO)/s_anti96com.o
@@ -161,11 +162,14 @@ $(BINDIR)/monitortt: monitortt.o
 monitortt.o:
 	$(CC) $(CFLAGS) -I$(VMESG) monitortt.c
 
+dsmsubs.o: dsmsubs.c
+	$(CC) $(CFLAGS) -I$(COMMONINC) -I$(GLOBALINC) dsmsubs.c
+
 canbus.o: canbus.c
 	$(CC) $(CFLAGS) canbus.c
 
 heartbeat.o: heartbeat.c
-	$(CC) $(CFLAGS) heartbeat.c
+	$(CC) $(CFLAGS) -I$(IP480INC) heartbeat.c
 
 $(BINDIR)/ttalarmcheck: ttalarmcheck.o
 	$(CC) -o $(BINDIR)/ttalarmcheck ttalarmcheck.o
@@ -237,8 +241,8 @@ rmdrivemon.o:
 ttsubs: ttsubs.c
 	$(CC) -o ttsubs -g -Wall -I$(COMMONINC) ttsubs.c
 
-$(COMMONINC)/tsshm.h : include/tsshm.h
-	ln -s $(ACCAPP)/servo/include/tsshm.h $(COMMONINC)
+#$(COMMONINC)/tsshm.h : include/tsshm.h
+#	ln -s include/tsshm.h $(COMMONINC)
 
 clean:
 	rm -f *.o $(BINS)
@@ -246,6 +250,6 @@ clean:
 depend: $(SOURCES)
 	$(CC) $(CFLAGS) -Iinclude -I$(VMESG) -I$(IPEINC) -I$(NSINC) \
 		-I$(MONINC) -I$(COMMONINC) -I$(GLOBALINC) -MM $(SOURCES) \
-		-I$(ACCAPP)/iPOctalPlus422/includeFiles > dependencies
+		-I$(IP480INC) > dependencies
 
 include dependencies

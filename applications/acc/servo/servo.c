@@ -33,6 +33,7 @@ void bzero(void *s, int n);	/* This should be in string.h, but isn't */
 #include "vme_sg_simple.h"
 #include "dsmsubs.h"
 #include "canbus.h"
+#include "heartbeat.h"
 #if ! GLT
 #include "syncclock32.h"
 #include "s_constants.h"
@@ -46,6 +47,7 @@ void bzero(void *s, int n);	/* This should be in string.h, but isn't */
 #include "commonLib.h"
 #include "checkencoders.h"
 #include "stderrUtilities.h"
+#include "dsm.h"
 
 #define CATCH_SIGNALS 0
 #define USE_SIGTIMEDWAIT 0
@@ -55,6 +57,12 @@ void bzero(void *s, int n);	/* This should be in string.h, but isn't */
 #define EL_VERBOSE 0
 #define dprintf if(verbose) ErrPrintf
 #define ddprintf if(verbose > 1) ErrPrintf
+#define TO_SHUTDOWN_CNT 100  /* 5 sec */
+#define TO_STANDBY_CNT 100  /* 5 sec */
+#define TO_ACTIVE_CNT 100
+#define TO_STOP_CNT 200
+
+#if ! GLT
 #define IS_COLLISION_PAD(id) (id < 8 || id == 22)
 
 #define SERVO_DOES_TACH_DIVISORS 0
@@ -72,17 +80,18 @@ void bzero(void *s, int n);	/* This should be in string.h, but isn't */
 #define READMOTORCYCLE 80
 #define ROCKER_CHECK_CYCLE 90
 #define ENCODER_CHECK_CYCLE 95
-int auxCycle;	/* Sub cycle number for doing infrequent tasks */
 
 /* #define ENCODER_DIFF_TOLERANCE 5*MAS */
 #define ADCFACTOR (1.013*5.0/1024.)  /* 10-bit 80C196 ADC */
+#endif /* !GLT */
+int auxCycle;	/* Sub cycle number for doing infrequent tasks */
 
 static int shutdownSignal = 0;		/* signal main program to shutdown */
 static int gotQuit = 0;			/* Return with QUITRTN */
-static int cnt = 0;
-int beepCnt = 0;
 int verbose = 0;
 #if ! GLT
+static int cnt = 0;
+int beepCnt = 0;
 static int bypassPreLimits = 0;
 static int useSyncClock32 = 0;
 static int collisionPossible;
@@ -107,7 +116,6 @@ static enum DRVSTATE oldAzState, oldElState;
     #define PORT "/dev/IPOP422-0"
   #endif
 #endif
-#endif /* !GLT */
 
 
 /* Define a structure to hold all of the information associated with a phase
@@ -129,10 +137,11 @@ MOVE azm, elm;
 
 /* Replacement for defined constants */
 double az_vmax, el_vmax;
-double az_amax, el_amax;
 float az_amax_f;			/* for writing into rm */
-double trAzVmax, trElVmax;		/* Max allowable command velocities */
+#endif /* !GLT */
+double az_amax, el_amax;
 
+double trAzVmax, trElVmax;		/* Max allowable command velocities */
 double avgDt = 0;
 struct vme_sg_simple_time ttime;
 
@@ -146,13 +155,22 @@ struct timespec timeout= {
                          };
 #endif /* USE_SIGTIMEDWAIT */
 
+int lastAz, lastEl;			/* Positions from the ACU */
+enum ACUAXISMODE azDriveMode = SHUTDOWN;	/* Mode reported by the ACU */
+enum ACUAXISMODE elDriveMode = SHUTDOWN;	/* Mode reported by the ACU */
+enum ACUACCESS  ACUAccessMode;
+int ACUError;
+int LastACUErrorAddress;
+int azModeCmd, elModeCmd;
+/* The following are used by AzCycle and ElCycle for commands to the ACU */
+int nxtAz[2], nxtEl[2];
+
+#if ! GLT
 int azTurn = 0;
-int encAz, encEl;		/* Values read from the encoders (mas) */
 int oldEncAz;			/* Prev az reading.  Used to update turns */
 double elGearRatio;
 double lastTimeStep;		/* Time (sec) from the prev clock rtn to now */
 
-#if ! GLT
 int elLimEncZero, azLimEncZero;
 
 /* Things for use with the scb */
@@ -182,8 +200,6 @@ int padID = 0;
 int azMotorDisable = 0;
 int useFakePadID = 0;
 int fakePadID = 0;
-#else /* !GLT */
-int ttfd;			/* File descriptor for the TrueTime device */
 int reportTrueTimeTimeout = 0;
 int irig_error_count = 0, irig_error_seen = 0;
 int nonLockoutSetupDone = 0;
@@ -201,16 +217,22 @@ int needsHorn, hornCnt;		/* Sound horn before large moves */
 int azRockerBits;
 int airPressureSwitch = 0;	/* assume it is not released */
 int prevAirPressureSwitch;
+#else /* !GLT */
+int ttfd;			/* File descriptor for the TrueTime device */
+int irig_error_count = 0, irig_error_seen = 0;
+double lastTimeStep;		/* Time (sec) from the prev clock rtn to now */
 #endif /* !GLT */
 
+int posInSunAvoid;		/* Current posn from Track in avoid */
 short requierdSunSafeMinutes;	/* # min ahead of sun zone to avoid */
 int presentSunSafeMinutes;	/* # min ahead of sun zone now */
+#if ! GLT
 short antInArray;
 int mailCount = 0;
 unsigned int scbShutdownRequest;
 unsigned int scbStowRequest;
-int posInSunAvoid;		/* Current posn from Track in avoid */
 int myAntennaNumber;
+#endif /* ! GLT */
 char antmsg[] = "GLT is";
 
 TrackServoSHM *tsshm;			/* Local pointer to shared memory */
@@ -224,8 +246,13 @@ int trAzRaw, trAzVelRaw, trElRaw, trElVelRaw;
 int trAz, trAzVel, trEl, trElVel;
 int trMsecCmd;			/* Time of last command in msec */
 double dt;			/* (tsshm->msec - trMsecCmd)/1000. (sec) */
-int trAzVelBad, trElVelBad;
 
+#if GLT
+int azCnt = 0, elCnt = 0;	/* counts 10ms intervals as drives start */
+int azTry, elTry;		/* counts startup tries */
+float azTrErrorArcSec, elTrErrorArcSec;
+int trAzVelBad, trElVelBad;
+#else /* GLT */
 int shpAz, shpEl;		/* Position derived from the command shaper **/
 int azCnt = 0, elCnt = 0;	/* counts 10ms intervals as drives start */
 int azTry, elTry;		/* counts startup tries */
@@ -239,7 +266,6 @@ int cmdAzAccel, cmdElAccel;	/* Accel cmds for vel loop (mas/sec^2) */
 /* Vel cmds scaled for the scb (+-~32k).  Use int to avoid overflow */
 int scbAzVel,scbElVel;
 
-#if ! GLT
 /* Reflective memory stuff */
 float azTrErrorArcSec, elTrErrorArcSec;
 float trErrorBoxtime = 1.0;
@@ -250,37 +276,36 @@ char elCollisionLimits[9] = {0,0,0,0,0,0,0,0,0};
 #endif /* !GLT */
 
 /* servo.c */
+void WaitTickGetTime(void);
+void GetACUPosAndStatus(void);
+void PrintSamples(void);
+void SetACUMode(int azMode, int elMode);
 static void AzCycle(void);
 static void ElCycle(void);
-static void movePos(MOVE *mp, int time);
 #if ! GLT
+static void movePos(MOVE *mp, int time);
 static double GearRatio(int el);
-#endif /* !GLT */
 #if !SIMULATING
 static void OpenScb(void);
 void checkCollision(void);
-#if ! GLT
 static void SetM3Cmd(void);
-#endif /* !GLT */
-void PrintSamples(void);
 void ReadScbParameters(void);
 void NonLockoutSetup(void);
 static void CloseScb(char *s);
 static void InitEncoders(void);
 static void ReadLimEncoders(int *azEnc, int *elEnc);
 static void SetScbState(void);
+static void GetPosTime();
+static void GetNextTickTime(void);
 #endif /* !SIMULATING */
+#endif /* !GLT */
 #if CATCH_SIGNALS
 #if !USE_SIGTIMEDWAIT
 static void SigIntHndlr(int);
 static void SigQuitHndlr(int signo);
 #endif /* USE_SIGTIMEDWAIT */
 #endif /* CATCH_SIGNALS */
-static void GetPosTime();
-static void GetNextTickTime(void);
-#if 0
-static void PrintTime(struct vme_sg_simple_time *tp);
-#endif
+#if ! GLT
 #if !SIMULATING
 static void PrintEncoders(void);
 static void printStatusFault(void);
@@ -291,6 +316,7 @@ float Thermistor(unsigned short counts);
 void CheckResets(void);
 void SetPalmCodeDate(void);
 #endif /* !SIMULATING */
+#endif /* ! GLT */
 
 void ErrPrintf(char *s, ...);
 
@@ -298,6 +324,7 @@ void ErrPrintf(char *s, ...);
 static void DumpMove(MOVE *mp, char *axis, int time);
 #endif /* VERBOSE */
 
+#if ! GLT
 void servoUsage(char *);
 
 void servoUsage(char *programName) {
@@ -316,16 +343,12 @@ void servoUsage(char *programName) {
           programName,PORT);
   exit(QUIT_RTN);
 }
+#endif /* ! GLT */
 
 
 int main(int argc, char *argv[]) {
   int i;
   enum DRVSTATE oldAzState, oldElState;
-#if !SIMULATING
-
-  enum M3CMD oldM3Cmd = -1;
-#endif /* !SIMULATING */
-
   char msg[80];
 
   DAEMONSET
@@ -357,6 +380,9 @@ int main(int argc, char *argv[]) {
 #endif /* CATCH_SIGNALS */
 #endif /* USE_SIGTIMEDWAIT */
 
+  az_amax = AZ_AMAX;
+  el_amax = EL_AMAX;
+#if ! GLT
   az_vmax = AZ_VMAX_DEFAULT;
   el_vmax = EL_VMAX_DEFAULT;
   az_amax = AZ_AMAX;
@@ -451,7 +477,11 @@ int main(int argc, char *argv[]) {
   /* Set some constants */
   trAzVmax = az_vmax * 0.76;
   trElVmax = el_vmax * 0.76;
-
+#else /* ! GLT */
+  /* Set some constants */
+  trAzVmax = 3*MAS;
+  trElVmax = 3*MAS;
+#endif /* ! GLT */
 
   setpriority(PRIO_PROCESS, (0), (SERVOPRIO));
   umask(0111);
@@ -473,10 +503,7 @@ int main(int argc, char *argv[]) {
   tsshm->sendEncToPalm = 0;
 
 #if SIMULATING
-
-#if ! GLT
   scbStatus = 0;
-#endif /* !GLT */
   encAz = 0;
   encEl = 45*MAS;
   elState = azState = 0;
@@ -487,13 +514,19 @@ int main(int argc, char *argv[]) {
   }
   i = VME_SG_SIMPLE_RATE_1K;
   ioctl(ttfd, VME_SG_SIMPLE_SET_PULSE_RATE, &i);
-  OpenCntr();			/* Open the heartbeat counter */
   tsshm->fault = NO_FAULT;
 #else /* SIMULATING */
 
 #if GLT
+  OpenCntr();			/* Open the heartbeat counter */
   SetupCanBus();
   SafeOpenDsm();
+  WriteDsmMonitorPoints();
+  /* Set a few things in a safe state. */
+  azState = SERVOOFF;
+  elState = SERVOOFF;
+  oldAzState = oldElState = SERVOOFF;
+
 #else /* GLT */
   /* initializing ref. mem. */
 
@@ -518,8 +551,10 @@ int main(int argc, char *argv[]) {
   azState = SERVOOFF;
   elState = SERVOOFF;
   oldAzState = oldElState = SERVOOFF;
+#if ! GLT
   cmdAzVel = cmdElVel = 0;
   SetM3Cmd();
+#endif /* ! GLT */
 
 #if	AZ_VERBOSE > 1 || EL_VERBOSE > 1
 
@@ -529,14 +564,29 @@ int main(int argc, char *argv[]) {
 
 #if GLT
   ReadCntr();			/* Wait for the 48 ms heartbeat */
+  GetACUPosAndStatus();
+  nxtAz[1] = nxtAz[0] = lastAz / ACU_TURNS_TO_MAS;	/* set zero velocity */
+  nxtEl[1] = nxtEl[0] = lastAz / ACU_TURNS_TO_MAS;	/* set zero velocity */
+  /* if the drives are on, set to standby, otherwise to shutdown */
+  if(ACUAccessMode == REMOTE) {
+    if(azDriveMode >= STANDBY) {
+      azModeCmd = STANDBY;
+    }
+    if(elDriveMode >= STANDBY) {
+      elModeCmd = STANDBY;
+    }
+    SetACUMode(azDriveMode, elDriveMode);
+  }
+#else /* GLT */
   if(!useSyncClock32)
     GetNextTickTime();
   GetPosTime();
+#endif /* GLT */
   if((tsshm->el < 10*MAS) || (tsshm->el > 90*MAS) ||
-      (tsshm->az > 360*MAS) || (tsshm->az < -180*MAS)) {
-    tsshm->az = encAz;
+      (tsshm->az > 270*MAS) || (tsshm->az < -270*MAS)) {
+    tsshm->az = lastAz;
     tsshm->azVel = 0;
-    tsshm->el = encEl;
+    tsshm->el = lastEl;
     tsshm->elVel = 0;
   }
   trAz = trAzRaw = tsshm->az;
@@ -546,23 +596,24 @@ int main(int argc, char *argv[]) {
   dprintf("Entering servo's main loop\n");
   while(shutdownSignal == 0) {
 
-    /* Get time and read encoder */
     tsshm->azState = azState;
     tsshm->elState = elState;
-#if ! GLT
+    /* Get time and read encoder */
+#if GLT
     WaitTickGetTime();
+    GetACUPosAndStatus();
 #else  /* GLT */
     GetPosTime();
-#endif /* !GLT */
-    tsshm->encAz = encAz;
-    tsshm->encEl = encEl;
+#endif /* GLT */
+    tsshm->encAz = lastAz;
+    tsshm->encEl = lastEl;
 
     CheckTrCmds();	/* Is there a new command from Track? */
     dt = (tsshm->msec - trMsecCmd)/1000.;
     if(dt < -3600)
       dt += 24*3600;
-    tsshm->azTrError = trAzRaw + trAzVelRaw * dt - encAz;
-    tsshm->elTrError = trElRaw + trElVelRaw * dt - encEl;
+    tsshm->azTrError = trAzRaw + trAzVelRaw * dt - lastAz;
+    tsshm->elTrError = trElRaw + trElVelRaw * dt - lastEl;
 
 #if AZ_VERBOSE || EL_VERBOSE
 
@@ -576,80 +627,48 @@ int main(int argc, char *argv[]) {
     i = 0;
     if(tsshm->azCmd != trAzCmd) {
       if(tsshm->azCmd == OFF_CMD && azState != SERVOOFF) {
-        azState = STOPPING;
+        azState = STOPPING1;
         i = 1;
       } else if(tsshm->azCmd == ON_CMD && azState == SERVOOFF) {
-        if(tsshm->padID > 26 || tsshm->padID < 1) {
-          i = 2;
-        } else if(tsshm->fault == LOCKOUT) {
-          i = 3;
-        } else if(airPressureSwitch) {
-          i = 4;
-        } else if(collisionPossible) {
-	  i = 5;
-	} else if(azIntegralGain < 10) {
-	  i = 6;
-        } else {
-          if(azCnt > 0)
-            azCnt = 0;
           azTry = 0;
-          azState = STARTING;
-#if !SIMULATING
-
-          if(! nonLockoutSetupDone)
-            NonLockoutSetup();
-#endif /* !SIMULATING */
-
-        }
+          azCnt = 0;
+          azState = STARTING1;
       }
       trAzCmd = tsshm->azCmd;
     }
     if(tsshm->elCmd != trElCmd) {
       if(tsshm->elCmd == OFF_CMD && elState != SERVOOFF) {
-        elState = STOPPING;
+        elState = STOPPING1;
         i = 1;
       }
       if(tsshm->elCmd == ON_CMD && elState == SERVOOFF) {
-        if(tsshm->padID > 26) {
-          i = 2;
-        } else if(tsshm->fault == LOCKOUT) {
-          i = 3;
-        } else if(collisionPossible) {
-	  i = 5;
-	} else if(elIntegralGain < 10) {
-	  i = 6;
-        } else {
-          if(elCnt > 0)
-            elCnt = 0;
           elTry = 0;
-          elState = STARTING;
-#if !SIMULATING
-
-          if(! nonLockoutSetupDone)
-            NonLockoutSetup();
-#endif /* !SIMULATING */
-
-        }
+          elCnt = 0;
+          elState = STARTING1;
       }
       trElCmd = tsshm->elCmd;
     }
     if(i) {
+#if ! GLT
       static char *reason[] = {"No pad ID", "Palm in control",
 	       "Az Brake Manually Released", "Collision Possible",
 	       "Gains Too Low (Transporter gains?)"};
-
       beepCnt = 2;
+#endif /* ! GLT */
+
       if(i == 1) {
         ErrPrintf("servo received OFF_CMD from Track\n");
+#if ! GLT
       } else {
         sprintf(msg, "Tracking not allowed: %s", reason[i-2]);
         vSendOpMessage(OPMSG_SEVERE, 19, 60, msg);
+#endif /* ! GLT */
       }
     }
 
     if(fabs(dt) > 3.0 && (
-          (azState != SERVOOFF && azState != STOPPING) ||
-          (elState != SERVOOFF && elState != STOPPING))) {
+       (azState != SERVOOFF && azState != STOPPING1 && azState != STOPPING2) ||
+       (elState != SERVOOFF && elState != STOPPING1 && elState != STOPPING2))) {
       ErrPrintf("Track timeout or clock jump, dt %.2f sec.,"
                 "avg. dt %.2f sec.\n", dt, avgDt);
 #if !SIMULATING
@@ -657,33 +676,39 @@ int main(int argc, char *argv[]) {
       vSendOpMessage(OPMSG_SEVERE, 19, 60, "Track timeout");
 #endif /* !SIMULATING */
 
-      if(azState != SERVOOFF && azState != STOPPING) {
-        azState = STOPPING;
+      if(azState != SERVOOFF && azState != STOPPING1 && azState != STOPPING2) {
+        azState = STOPPING1;
+#if ! GLT
         beepCnt = 2;
+#endif /* !GLT */
       }
-      if(elState != SERVOOFF && elState != STOPPING) {
-        elState = STOPPING;
+      if(elState != SERVOOFF && elState != STOPPING1 && elState != STOPPING2) {
+        elState = STOPPING1;
+#if ! GLT
         beepCnt = 2;
+#endif /* !GLT */
       }
     }
     avgDt += (dt - avgDt)/10;
 
+#if ! GLT
 #if !SIMULATING
-
     if(azState < STOPPING && elState < STOPPING) {
       SetScbState();
     }
 #endif /* !SIMULATING */
+#endif /* ! GLT */
     /* If svdata is not running, keep the sample buffer moving */
     if(SFULL) {
       INC_OUT;
     }
     AzCycle();
-    tsshm->cmdAz = shpAz;
     ElCycle();
-    tsshm->cmdEl = shpEl;
+#if ! GLT
     cnt++;
+#endif /* !GLT */
 
+#if ! GLT
     if(azState >= STOPPING || elState >= STOPPING) {
 #if SIMULATING
 #else /* SIMULATING */
@@ -768,11 +793,13 @@ read(scfd, &sctime2, sizeof(sctime2));
 #endif /* !SIMULATING */
 
     }
+#endif /* ! GLT */
 
     if(azState != oldAzState || elState != oldElState) {
       if(elState >= TRACKING && azState >= TRACKING) {
         /* Both drives are up, so report the old FaultWord
          * and clear it. */
+#if ! GLT
 #if !SIMULATING
         ComStartPkt(CLRFAULTWORD);
         SendPktGetRtn(CLRFAULTWORD);
@@ -780,27 +807,35 @@ read(scfd, &sctime2, sizeof(sctime2));
         dprintf("Both drives came up: fw = 0x%x\n", tsshm->scbFaultWord);
         CheckResets();
 #endif /* !SIMULATING */
+#endif /* ! GLT */
 
       }
       if(azState != oldAzState && azState == SERVOOFF) {
         dprintf("Az drive is off\n");
+#if ! GLT
         beepCnt = 2;
+#endif /* !GLT */
       }
       if(elState != oldElState && elState == SERVOOFF) {
         dprintf("El drive is off\n");
+#if ! GLT
         beepCnt = 2;
+#endif /* !GLT */
       }
       oldElState = elState;
       oldAzState = azState;
     }
+#if ! GLT
 VEL_PKT_ERR:
 #if !SIMULATING
     CheckEncoders();
 #endif /* !SIMULATING */
+#endif /* ! GLT */
 
 #if !SIMULATING
     /* Make checks of the scb less frequently than once/cycle */
     auxCycle = (tsshm->msec / 10) % 100;
+#if ! GLT
     switch(auxCycle) {
     case ROCKER_CHECK_CYCLE :
 
@@ -962,7 +997,6 @@ VEL_PKT_ERR:
 	mailCount = 0;
       }
       break;
-#if ! GLT
     /* When the SCB is timing out, ~half of the cycles are skipped */
     case PACKETERRORCYCLE:
     case PACKETERRORCYCLE+1:
@@ -982,7 +1016,6 @@ printf("auxCycle %d num %d numnew %d Timeout %d newTimeout %d bad %d newBad %d\n
       prevComBadPkts = comBadPkts;
       prevComNumCalls = comNumCalls;
       break;
-#endif /* !GLT */
     case REFLMEMCYCLE:
       /* Adjust Limit Encoder values for motion since reading */
       tsshm->limAz = encAz + azLimEncDiff;
@@ -1012,7 +1045,6 @@ printf("auxCycle %d num %d numnew %d Timeout %d newTimeout %d bad %d newBad %d\n
       UPDATE_MONITOR_AND_STATE;
       break;
     case INFREQUENTCYCLE:
-#if ! GLT
       if(tsshm->msec < 61000 && tsshm->msec > 60000) {
         struct timespec tp;
         ComStartPkt(SET_PALM_TIME);
@@ -1020,7 +1052,6 @@ printf("auxCycle %d num %d numnew %d Timeout %d newTimeout %d bad %d newBad %d\n
         ComPutL(tp.tv_sec);
         SendPktGetRtn(ACK);
       }
-#endif /* !GLT */
       if(beepCnt > 0) {
         /* Only one shutdown message to un-clutter stderr file */
         if(--beepCnt == 1)
@@ -1075,6 +1106,7 @@ printf("auxCycle %d num %d numnew %d Timeout %d newTimeout %d bad %d newBad %d\n
         }
       }
     }
+#endif /* !GLT */
 #if 1
     /* Compute average pointing errors */
     if((auxCycle % 10) == 9) {
@@ -1116,9 +1148,11 @@ printf("auxCycle %d num %d numnew %d Timeout %d newTimeout %d bad %d newBad %d\n
 
   }
 
+#if ! GLT
 #if !SIMULATING
   CloseScb("Received a signal");
 #endif /* SIMULATING */
+#endif /* ! GLT */
 
 #if RECORD
 
@@ -1128,6 +1162,187 @@ printf("auxCycle %d num %d numnew %d Timeout %d newTimeout %d bad %d newBad %d\n
   return((gotQuit)? QUIT_RTN: NORMAL_RTN);
 }
 
+static void AzCycle(void) {
+  switch(azState) {
+  case SERVOOFF:
+    break;
+  /* The normal entry to SHUTDOWN1 will be when the drive is either in
+   * SHUTDOWN or STANDBY mode.  In that case set azCnt to 0.  If the
+   * drive is in SHUTDOWN mode, STANDBY will be requested before
+   * passing to STANDBY2, otherwise that will happen immediately.
+   * When entering STANDBY1 from a failed start attempt, set azCnt to a
+   * positive number to wait for the drive to reach SHUTDOWN mode before
+   * commanding STANDBY again. */
+  case STARTING1:
+    if(azDriveMode == SHUTDOWN) {
+      azModeCmd = STANDBY;
+      SetACUMode(azModeCmd, elModeCmd);
+    } else if(azCnt > 0) {
+      azCnt--;
+      break;
+    }
+    azCnt = TO_STANDBY_CNT;
+    azState = STARTING2;
+    break;
+  case STARTING2:	/* Request ENCODER Mode once STANDBY is reached */
+    if(azDriveMode == STANDBY) {
+       azModeCmd = ENCODER;
+       SetACUMode(azModeCmd, elModeCmd);
+       azTry = 0;
+       azCnt = TO_ACTIVE_CNT;
+       azState = STARTING3;
+    } else if(--azCnt <= 0) {	/* Getting to STANDBY failed */
+      if(azTry == 0) {		/* If the first try failed, try again */
+        azTry = 1;
+        azModeCmd = SHUTDOWN;
+        SetACUMode(azModeCmd, elModeCmd);
+        azState = STARTING1;
+	azCnt = TO_SHUTDOWN_CNT;
+      } else {			/* IF the 2nd try fails, give up */
+        azState = SERVOOFF;
+        azModeCmd = SHUTDOWN;
+        SetACUMode(azModeCmd, elModeCmd);
+        vSendOpMessage(OPMSG_SEVERE, 15, 10,
+		"Az drive failed to enter STANDBY mode");
+      }
+    }
+    break;
+  case STARTING3:		/* Wait for ENCODER Mode */
+    if(azDriveMode == ENCODER) {
+      azState = TRACKING;
+    } else if(--azCnt <= 0) {	/* Getting to ENCODER failed */
+      if(azTry == 0) {
+        azTry = 1;
+        azModeCmd = STANDBY;
+        SetACUMode(azModeCmd, elModeCmd);
+        azState = STARTING2;
+	azCnt = 2*TO_STANDBY_CNT;
+      } else {
+        azState = SERVOOFF;
+        azModeCmd = SHUTDOWN;
+        SetACUMode(azModeCmd, elModeCmd);
+        vSendOpMessage(OPMSG_SEVERE, 15, 10,
+		"Az drive failed to enter ENCODER mode");
+      }
+    }
+    break;
+  case STOPPING1:
+    nxtAz[1] = nxtAz[0];		/* set zero velocity */
+    azCnt = TO_STOP_CNT;
+    SetCANValue(AZ_TRAJ_CMD, nxtAz, 8);
+    azState = STOPPING2;
+    break;
+  case STOPPING2:
+    if(--azCnt <= 0) {
+      azModeCmd = STANDBY;
+      SetACUMode(azModeCmd, elModeCmd);
+      azState = SERVOOFF;
+    }
+    break;
+  case TRACKING:
+    if(azDriveMode != ENCODER) {
+      azState = STOPPING1;
+      vSendOpMessage(OPMSG_SEVERE, 15, 10, "Az drive stopped");
+      break;
+    }
+    /* Issue the next tracking command */
+    nxtAz[0] = trAz + trAzVel*(dt + HEARTBEAT_PERIOD);
+    nxtAz[1] = trAz + trAzVel*(dt + 2*HEARTBEAT_PERIOD);
+    SetCANValue(AZ_TRAJ_CMD, nxtAz, 8);
+  }
+}
+
+static void ElCycle(void) {
+  switch(elState) {
+  case SERVOOFF:
+    break;
+  /* The normal entry to SHUTDOWN1 will be when the drive is either in
+   * SHUTDOWN or STANDBY mode.  In that case set elCnt to 0.  If the
+   * drive is in SHUTDOWN mode, STANDBY will be requested before
+   * passing to STANDBY2, otherwise that will happen immediately.
+   * When entering STANDBY1 from a failed start attempt, set elCnt to a
+   * positive number to wait for the drive to reach SHUTDOWN mode before
+   * commanding STANDBY again. */
+  case STARTING1:
+    if(elDriveMode == SHUTDOWN) {
+      elModeCmd = STANDBY;
+      SetACUMode(elModeCmd, elModeCmd);
+    } else if(elCnt > 0) {
+      elCnt--;
+      break;
+    }
+    elCnt = TO_STANDBY_CNT;
+    elState = STARTING2;
+    break;
+  case STARTING2:	/* Request ENCODER Mode once STANDBY is reached */
+    if(elDriveMode == STANDBY) {
+       elModeCmd = ENCODER;
+       SetACUMode(elModeCmd, elModeCmd);
+       elTry = 0;
+       elCnt = TO_ACTIVE_CNT;
+       elState = STARTING3;
+    } else if(--elCnt <= 0) {	/* Getting to STANDBY failed */
+      if(elTry == 0) {		/* If the first try failed, try again */
+        elTry = 1;
+        elModeCmd = SHUTDOWN;
+        SetACUMode(elModeCmd, elModeCmd);
+        elState = STARTING1;
+	elCnt = TO_SHUTDOWN_CNT;
+      } else {			/* IF the 2nd try fails, give up */
+        elState = SERVOOFF;
+        elModeCmd = SHUTDOWN;
+        SetACUMode(elModeCmd, elModeCmd);
+        vSendOpMessage(OPMSG_SEVERE, 15, 10,
+		"El drive failed to enter STANDBY mode");
+      }
+    }
+    break;
+  case STARTING3:		/* Wait for ENCODER Mode */
+    if(elDriveMode == ENCODER) {
+      elState = TRACKING;
+    } else if(--elCnt <= 0) {	/* Getting to ENCODER failed */
+      if(elTry == 0) {
+        elTry = 1;
+        elModeCmd = STANDBY;
+        SetACUMode(elModeCmd, elModeCmd);
+        elState = STARTING2;
+	elCnt = 2*TO_STANDBY_CNT;
+      } else {
+        elState = SERVOOFF;
+        elModeCmd = SHUTDOWN;
+        SetACUMode(elModeCmd, elModeCmd);
+        vSendOpMessage(OPMSG_SEVERE, 15, 10,
+		"El drive failed to enter ENCODER mode");
+      }
+    }
+    break;
+  case STOPPING1:
+    nxtEl[1] = nxtEl[0];		/* set zero velocity */
+    elCnt = TO_STOP_CNT;
+    SetCANValue(EL_TRAJ_CMD, nxtEl, 8);
+    elState = STOPPING2;
+    break;
+  case STOPPING2:
+    if(--elCnt <= 0) {
+      elModeCmd = STANDBY;
+      SetACUMode(elModeCmd, elModeCmd);
+      elState = SERVOOFF;
+    }
+    break;
+  case TRACKING:
+    if(elDriveMode != ENCODER) {
+      elState = STOPPING1;
+      vSendOpMessage(OPMSG_SEVERE, 15, 10, "El drive stopped");
+      break;
+    }
+    /* Issue the next tracking command */
+    nxtEl[0] = trEl + trElVel*(dt + HEARTBEAT_PERIOD);
+    nxtEl[1] = trEl + trElVel*(dt + 2*HEARTBEAT_PERIOD);
+    SetCANValue(EL_TRAJ_CMD, nxtEl, 8);
+  }
+}
+
+#if ! GLT
 static void AzCycle(void) {
   /* At each cycle set to anticipated next position and velocity.
    * Used as the the current position & vel in setting up moves. */
@@ -2078,7 +2293,6 @@ static void DumpMove(MOVE *mp, char *axis, int time) {
 #endif /* VERBOSE */
 
 #if !SIMULATING
-#if ! GLT
 /* Subroutine to read the state M3 was left in and to reset it to closed if
  * servo has been inactive long or the value is something other than 0 or 1
  */
@@ -2154,7 +2368,6 @@ static void OpenScb(void) {
   tsshm->elState = SERVOOFF;
   tsshm->azState = SERVOOFF;
 }
-#endif /* !GLT */
 
 void checkCollision(void) {
   /* For each collision pad, padList has one or two padIDs of pads which
@@ -2223,6 +2436,7 @@ void checkCollision(void) {
     }
   }
 }
+#endif /* !GLT */
 
 /* Definition of the data columns:
 Column  Content
@@ -2277,6 +2491,7 @@ void PrintSamples(void) {
   ErrPrintf("Saved last 0.6 sec of state in %s\n", fn);
 }
 
+#if ! GLT
 void ReadScbParameters(void) {
   /* Ask the SCB to get the Palm date code */
   ComStartPkt(QUERYPALMVERSION);
@@ -2424,9 +2639,11 @@ static void SigQuitHndlr(int signo) {
 }
 #endif /* !USE_SIGTIMEDWAIT */
 #endif /* CATCH_SIGNALS */
+#endif /* !GLT */
 
 #if GLT
 void WaitTickGetTime(void) {
+    static int oldusec = -1;
     int stat;
 
     /* get the current time in any case */
@@ -2440,9 +2657,11 @@ void WaitTickGetTime(void) {
     if(lastTimeStep < 0) {
       lastTimeStep += 1;
     }
+#if ! GLT
     if(ttTimeout) {
       ErrPrintf("TrueTime timeout: Time step is %.6f\n", lastTimeStep);
     }
+#endif /* ! GLT */
     oldusec = ttime.usec;
 
     /* Convert the time now */
@@ -2451,8 +2670,44 @@ void WaitTickGetTime(void) {
     tsshm->day = ttime.yday;
 }
 
-#else /* GLT */
+void GetACUPosAndStatus(void) {
+  unsigned char buf[8];
+  float f;
 
+  if(ReadCANValue(GET_ACU_MODE, buf, 2)) {
+      ACUAccessMode = buf[2] = buf[1];
+      elDriveMode = buf[1] = buf[0] >> 4;
+      azDriveMode = buf[0] = 0xf & buf[0];
+      dsm_write(dsm_host, "DSM_ACU_MODE_V3_B", buf);
+  }
+  if(ReadCANValue(GET_AZ_POSN, buf, 8)) {
+    lastAz = (int)(ACU_TURNS_TO_MAS * *(int *)buf);
+    f = ACU_TURNS_TO_DEG * *(int *)buf;
+    dsm_write(dsm_host, "DSM_AZ_POSN_DEG_F", &f);
+  }
+  if(ReadCANValue(GET_EL_POSN, buf, 8)) {
+    lastEl = (int)(ACU_TURNS_TO_MAS * *(int *)buf);
+    f = ACU_TURNS_TO_DEG * *(int *)buf;
+    dsm_write(dsm_host, "DSM_EL_POSN_DEG_F", &f);
+  }
+  if(ReadCANValue(GET_ACU_ERROR, buf, 5)) {
+    if((ACUError = buf[0]) != 0) {
+      memcpy(&LastACUErrorAddress, buf + 1, 4);
+    }
+    dsm_write(dsm_host, "DSM_ACU_ERROR_B", buf);
+  }
+}
+
+void SetACUMode(int azMode, int elMode) {
+  static unsigned char modes[2] = {0, 1};  /* Alwaus in remote mode */
+
+  modes[0] = (azMode & 0xf) | (elMode << 4);
+  SetCANValue(ACU_MODE_CMD, modes, 2);
+}
+
+#endif /* GLT */
+
+#if ! GLT
 #if !SIMULATING
 static void InitEncoders(void) {
   int i;
@@ -2869,7 +3124,6 @@ static void GetNextTickTime(void) {
     }
   }
 }
-#endif /* !GLT */
 
 #if 0
 static void PrintTime(struct vme_sg_simple_time *tp) {
@@ -3113,6 +3367,7 @@ enum IN_ARRAY_STATE StatusInArray(void) {
 #endif
 
 #endif /* !SIMULATING */
+#endif /* !GLT */
 
 /*VARARGS*/
 void ErrPrintf(char *s, ...) {

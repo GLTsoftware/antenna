@@ -20,6 +20,9 @@
 #define SET_SHUTTER	0x04102E
 #define SET_STOW_PIN	0x04102D
 
+#define ACU_TURNS_TO_MAS (MAS*180./(double)0x40000000)
+#define ACU_TURNS_TO_DEG (180./(double)0x40000000)
+
 extern void SetupCanBus(void);
 extern int ReadCANValue(int msgID, void *value, int len);
 extern int SetCANValue(int msgID, void *data, int len);

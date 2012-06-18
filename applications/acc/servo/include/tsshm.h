@@ -1,15 +1,5 @@
 /*
- * CVS Log and RCS Identification of this version:
- * $Id: tsshm.h,v 1.13 2008/05/09 18:44:07 rwilson Exp $
- * $Log: tsshm.h,v $
- * Revision 1.13  2008/05/09 18:44:07  rwilson
- * Add dump of previous state on unexpected drive shutdown
- *
- * Revision 1.12  2005/03/22 23:56:54  rwilson
- * add one tach fault
- *
- * Revision 1.11  2003/02/06 16:41:10  rwilson
- * Fix up types in encoder rm vars
+ * Version for the GLT
  */
 
 #define SERVOPRIO 75
@@ -19,12 +9,13 @@
 /* Define the shared memory for track to send servo position commands */
 /* In LynxOS, BLOCKSIZE for memory allocation is 8K */
 enum DRVCMD	{OFF_CMD=0, ON_CMD};
-/* enum DRVSTATE	{OFF_ST=0, ON_ST}; */
+enum ACUACCESS { LOCAL = 1, REMOTE };
+enum ACUAXISMODE { SHUTDOWN = 0, STANDBY, ENCODER, AUTONOMOUS,
+	SURVIVAL_STOW, MAINTENANCE_STOW, VELOCITY};
 enum DRVSTATE {
-	SERVOOFF = 0, STARTING, STOPPING, TRACKING, SLEWING,
-	LONGMOVECV_SETUP, LONGMOVECV, LONGMOVEDECEL
+	SERVOOFF = 0, STARTING1, STARTING2, STARTING3, STOPPING1, STOPPING2, \
+	TRACKING
 };
-#define DRVSTATE_STRINGS {"off", "start", "stop", "track", "slew" }
 enum FLTSTATE	{NO_FAULT = 0, FAULT, LOCKOUT, ONE_MOTOR_FAULT, EL_LMT_FAULT,
 			AZ_LMT_FAULT, ONE_TACH_FAULT};
 enum M3CMD	{CLOSE_M3_CMD = 0, OPEN_M3_CMD};

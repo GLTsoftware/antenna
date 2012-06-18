@@ -14,6 +14,7 @@
 #include "dsm.h"
 #include "tsshm.h"
 #include "servo.h"
+#include "canbus.h"
 
 int dsm_open_status;
 char dsm_host[] = "obscon";
@@ -26,9 +27,9 @@ char dsm_host[] = "obscon";
 #endif
 
 struct monitor_point {
-  char *dsm_name,
-  int id,
-  int len
+  char *dsm_name;
+  int id;
+  int len;
 } mptab[] = {
     {"DSM_ACU_ERROR_B",			0x0004002F, 1},
     {"DSM_AZ_BRAKE_B",			0x00040014, 1},
@@ -69,7 +70,7 @@ void SafeOpenDsm(void) {
 
 void WriteDsmMonitorPoints(void) {
   int i;
-  chat buf[8];
+  char buf[8];
 
   if(dsm_open_status != DSM_SUCCESS) {
     return;
