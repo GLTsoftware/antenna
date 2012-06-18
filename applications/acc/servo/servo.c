@@ -90,6 +90,7 @@ int nxtAz[2], nxtEl[2];
 int ttfd;			/* File descriptor for the TrueTime device */
 int irig_error_count = 0, irig_error_seen = 0;
 double lastTimeStep;		/* Time (sec) from the prev clock rtn to now */
+int curSec, prevSec;;
 
 int posInSunAvoid;		/* Current posn from Track in avoid */
 short requierdSunSafeMinutes;	/* # min ahead of sun zone to avoid */
@@ -351,6 +352,13 @@ int main(int argc, char *argv[]) {
       }
       oldElState = elState;
       oldAzState = azState;
+    }
+    /* read the parameters from the ACU and send them to dsm at the
+     * change of the second */
+    curSec = tsshm->msec/1000;
+    if(curSec != prevSec ) {
+      WriteDsmMonitorPoints();
+      prevSec = curSec;
     }
 
 #if !SIMULATING
