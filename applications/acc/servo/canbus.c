@@ -33,25 +33,6 @@ unsigned char azMode, elMode, accessMode;
 double azPos, prevAzPos, azEncoder, elPos, prevElPos, elEncoder1, elEncoder2;
 unsigned char acuError, azAuxMode, azBrake, azEncStatus;
 
-#if 0
-struct MONPOINTS {
-  int canID;		/* Can Bus ID of value(s) */
-  void (*fp)(int );	/* pointer to subroutine to  get and convert value */
-  void * rp1;		/* pointer to 1st result */
-  void * rp2;		/* pointer to 2nd result if needed */
-  char * description;
-} monPoints = {
-  {0x40022, &Get2Bytes,	&axisModes, &accessMode,	"Acu Mode"},
-  {0x40012, &Get2Ints,	&azPos,		&prevAzPos,	"Az Positiona"{;
-}
-
-typedef struct {
-  int l;
-  int p;
-} POSITION_RETURN;
-POSITION_RETURN *prp = (POSITION_RETURN *)MsgBuf.Data;
-#endif
-
 double posFactor = 180. / 0x40000000;
 int canfd;
 

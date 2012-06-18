@@ -23,6 +23,7 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include "iP480.h"
+#include "heartbeat.h"
 
 /* Things for the couinter device */
 char cntrName[] = "/dev/iP480_0";
