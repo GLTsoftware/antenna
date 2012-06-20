@@ -1,0 +1,16 @@
+In this directory I will change servo to be something like the final
+form.  It will run in the background and communicate only through
+shared memory and reflective memory.  For the moment reflective
+memory will just be another shared memory block.
+
+There will be two (compiler option) versions of servo:
+
+1) Dummy open loop with no interaction with any hardware.
+2) Antenna which runs both antenna axes.
+
+Servo will be able to collect data in any mode.  It will go into a
+rotary buffer capible of holding at least 1 sec's worth of data.  For the
+moment it will be in the fake reflective memory.
+
+Dmytrack will either run from a script or interactively and will control
+servo through the "trackservo" shared memory segment.

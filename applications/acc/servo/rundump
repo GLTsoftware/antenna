@@ -1,0 +1,8 @@
+#!/bin/bash
+typeset -i x=100
+while [ $x -gt 0 ]
+do
+	tsshmdump
+	sleep 30
+	x=$[ $x - 1 ]
+done
