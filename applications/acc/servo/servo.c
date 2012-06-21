@@ -31,6 +31,7 @@ void bzero(void *s, int n);	/* This should be in string.h, but isn't */
 #include "tsshm.h"
 #include "servo.h"
 #include "vme_sg_simple.h"
+#define VME_SG_SIMPLE_RATE_1K        ((short)0x02)
 #include "dsmsubs.h"
 #include "canbus.h"
 #include "heartbeat.h"
@@ -40,6 +41,7 @@ void bzero(void *s, int n);	/* This should be in string.h, but isn't */
 #include "stderrUtilities.h"
 #include "dsm.h"
 
+#define USE_SYSTEM_TIME 1
 #define CATCH_SIGNALS 0
 #define USE_SIGTIMEDWAIT 0
 #define DO_TIMESTAMP 0
@@ -87,6 +89,11 @@ int azModeCmd, elModeCmd;
 /* The following are used by AzCycle and ElCycle for commands to the ACU */
 int nxtAz[2], nxtEl[2];
 
+#if USE_SYSTEM_TIME
+struct timeval tv;
+struct timezone tz;
+struct tm *tmp;
+#endif /* USE_SYSTEM_TIME */
 int ttfd;			/* File descriptor for the TrueTime device */
 int irig_error_count = 0, irig_error_seen = 0;
 double lastTimeStep;		/* Time (sec) from the prev clock rtn to now */
@@ -133,6 +140,12 @@ void ErrPrintf(char *s, ...);
 static void DumpMove(MOVE *mp, char *axis, int time);
 #endif /* VERBOSE */
 
+void servoUsage(char *programName) {
+  fprintf(stderr,
+          "Usage: %s [-h] [-v]\n", programName);
+  exit(QUIT_RTN);
+}
+
 int main(int argc, char *argv[]) {
   int i;
   enum DRVSTATE oldAzState, oldElState;
@@ -169,6 +182,16 @@ int main(int argc, char *argv[]) {
 
   az_amax = AZ_AMAX;
   el_amax = EL_AMAX;
+
+  for (i=1; i<argc; i++) {
+    if (strstr(argv[i],"-h") != NULL) {
+      servoUsage(argv[0]);
+    }
+    if(strstr(argv[i],"-v") != NULL) {
+      verbose++;
+    }
+  }
+
   /* Set some constants */
   trAzVmax = 3*MAS;
   trElVmax = 3*MAS;
@@ -197,7 +220,8 @@ int main(int argc, char *argv[]) {
   encAz = 0;
   encEl = 45*MAS;
   elState = azState = 0;
-  ttfd = open("/dev/vme_sg0", O_RDWR, 0);
+#else /* SIMULATING */
+  ttfd = open("/dev/vme_sg_simple", O_RDWR, 0);
   if(ttfd <= 0) {
     ErrPrintf("Error opening TrueTime - /dev/vme_sg_simple\n");
     exit(SYSERR_RTN);
@@ -205,18 +229,21 @@ int main(int argc, char *argv[]) {
   i = VME_SG_SIMPLE_RATE_1K;
   ioctl(ttfd, VME_SG_SIMPLE_SET_PULSE_RATE, &i);
   tsshm->fault = NO_FAULT;
-#else /* SIMULATING */
+  
 
   OpenCntr();			/* Open the heartbeat counter */
+  dprintf("Counter, ");
   SetupCanBus();
+  dprintf("Canbus, ");
   SafeOpenDsm();
+  dprintf("Dsm, ");
   WriteDsmMonitorPoints();
+  dprintf("Monitor points, ");
   /* Set a few things in a safe state. */
   azState = SERVOOFF;
   elState = SERVOOFF;
   oldAzState = oldElState = SERVOOFF;
 
-  dprintf("completed\n");
 #endif /* SIMULATING */
 
   /* Set a few things in a safe state. */
@@ -230,8 +257,10 @@ int main(int argc, char *argv[]) {
   elPrintNext = 0;
 #endif /* VERBOSE */
 
-  ReadCntr();                   /* Wait for the 48 ms heartbeat */
+  WaitTickGetTime();            /* Wait for the 48 ms heartbeat */
+  dprintf("Tick and time, ");
   GetACUPosAndStatus();
+  dprintf("ACU pos, status, ");
   nxtAz[1] = nxtAz[0] = lastAz / ACU_TURNS_TO_MAS;      /* set zero velocity */
   nxtEl[1] = nxtEl[0] = lastAz / ACU_TURNS_TO_MAS;      /* set zero velocity */
   /* if the drives are on, set to standby, otherwise to shutdown */
@@ -254,6 +283,7 @@ int main(int argc, char *argv[]) {
   }
   trAz = trAzRaw = tsshm->az;
   trEl = trElRaw = tsshm->el;
+  dprintf("completed\n");
 
   /* Here the infinite loop begins */
   dprintf("Entering servo's main loop\n");
@@ -267,7 +297,13 @@ int main(int argc, char *argv[]) {
     tsshm->encAz = lastAz;
     tsshm->encEl = lastEl;
 
+#if 1
     CheckTrCmds();	/* Is there a new command from Track? */
+#endif
+  trAz = trAzRaw = tsshm->az;
+  trEl = trElRaw = tsshm->el;
+  trAzVel = trAzVelRaw = tsshm->azVel;
+  trElVel = trElVelRaw = tsshm->elVel;
     dt = (tsshm->msec - trMsecCmd)/1000.;
     if(dt < -3600)
       dt += 24*3600;
@@ -374,6 +410,8 @@ int main(int argc, char *argv[]) {
       ssq += azTrErrorArcSec * azTrErrorArcSec;
       elTrErrorArcSec = (double)tsshm->elTrError * 0.001;
       ssq += elTrErrorArcSec * elTrErrorArcSec;
+      dsm_write(dsm_host, "DSM_AZ_TRACKING_ERROR_F", &azTrErrorArcSec);
+      dsm_write(dsm_host, "DSM_EL_TRACKING_ERROR_F", &elTrErrorArcSec);
       if(auxCycle == 99) {
         static int trErrCnt = 0;
         static char m[] = "Tracking error is excessive";
@@ -418,6 +456,7 @@ static void AzCycle(void) {
    * commanding STANDBY again. */
   case STARTING1:
     if(azDriveMode == SHUTDOWN) {
+      dprintf("Commanding az to STANDBY\n");
       azModeCmd = STANDBY;
       SetACUMode(azModeCmd, elModeCmd);
     } else if(azCnt > 0) {
@@ -429,6 +468,7 @@ static void AzCycle(void) {
     break;
   case STARTING2:	/* Request ENCODER Mode once STANDBY is reached */
     if(azDriveMode == STANDBY) {
+       dprintf("az in standby, commanding ENCODER\n");
        azModeCmd = ENCODER;
        SetACUMode(azModeCmd, elModeCmd);
        azTry = 0;
@@ -436,12 +476,14 @@ static void AzCycle(void) {
        azState = STARTING3;
     } else if(--azCnt <= 0) {	/* Getting to STANDBY failed */
       if(azTry == 0) {		/* If the first try failed, try again */
+      dprintf("Az failed to reach STANDBY, returning to SHUTDOWN\n");
         azTry = 1;
         azModeCmd = SHUTDOWN;
         SetACUMode(azModeCmd, elModeCmd);
         azState = STARTING1;
 	azCnt = TO_SHUTDOWN_CNT;
       } else {			/* IF the 2nd try fails, give up */
+	dprintf("2nd failure to reach STANDBY, quitting\n");
         azState = SERVOOFF;
         azModeCmd = SHUTDOWN;
         SetACUMode(azModeCmd, elModeCmd);
@@ -452,15 +494,18 @@ static void AzCycle(void) {
     break;
   case STARTING3:		/* Wait for ENCODER Mode */
     if(azDriveMode == ENCODER) {
+      dprintf("az is tracking in ENCODER mode\n");
       azState = TRACKING;
     } else if(--azCnt <= 0) {	/* Getting to ENCODER failed */
       if(azTry == 0) {
+      dprintf("az failed to reach ENCODER mode, retry\n");
         azTry = 1;
         azModeCmd = STANDBY;
         SetACUMode(azModeCmd, elModeCmd);
         azState = STARTING2;
 	azCnt = 2*TO_STANDBY_CNT;
       } else {
+	dprintf("az failed to reach ENCODER the 2nd time, quitting\n");
         azState = SERVOOFF;
         azModeCmd = SHUTDOWN;
         SetACUMode(azModeCmd, elModeCmd);
@@ -470,6 +515,7 @@ static void AzCycle(void) {
     }
     break;
   case STOPPING1:
+    dprintf("Az drive stopping\n");
     nxtAz[1] = nxtAz[0];		/* set zero velocity */
     azCnt = TO_STOP_CNT;
     SetCANValue(AZ_TRAJ_CMD, nxtAz, 8);
@@ -477,6 +523,7 @@ static void AzCycle(void) {
     break;
   case STOPPING2:
     if(--azCnt <= 0) {
+      dprintf("az set to STANDBY\n");
       azModeCmd = STANDBY;
       SetACUMode(azModeCmd, elModeCmd);
       azState = SERVOOFF;
@@ -489,8 +536,8 @@ static void AzCycle(void) {
       break;
     }
     /* Issue the next tracking command */
-    nxtAz[0] = trAz + trAzVel*(dt + HEARTBEAT_PERIOD);
-    nxtAz[1] = trAz + trAzVel*(dt + 2*HEARTBEAT_PERIOD);
+    nxtAz[0] = (trAz + trAzVel*(dt + HEARTBEAT_PERIOD)) / ACU_TURNS_TO_MAS;
+    nxtAz[1] = (trAz + trAzVel*(dt + 2*HEARTBEAT_PERIOD)) / ACU_TURNS_TO_MAS;
     SetCANValue(AZ_TRAJ_CMD, nxtAz, 8);
   }
 }
@@ -508,6 +555,7 @@ static void ElCycle(void) {
    * commanding STANDBY again. */
   case STARTING1:
     if(elDriveMode == SHUTDOWN) {
+      dprintf("Commanding el to STANDBY\n");
       elModeCmd = STANDBY;
       SetACUMode(elModeCmd, elModeCmd);
     } else if(elCnt > 0) {
@@ -579,8 +627,8 @@ static void ElCycle(void) {
       break;
     }
     /* Issue the next tracking command */
-    nxtEl[0] = trEl + trElVel*(dt + HEARTBEAT_PERIOD);
-    nxtEl[1] = trEl + trElVel*(dt + 2*HEARTBEAT_PERIOD);
+    nxtEl[0] = (trEl + trElVel*(dt + HEARTBEAT_PERIOD)) / ACU_TURNS_TO_MAS;
+    nxtEl[1] = (trEl + trElVel*(dt + 2*HEARTBEAT_PERIOD)) / ACU_TURNS_TO_MAS;
     SetCANValue(EL_TRAJ_CMD, nxtEl, 8);
   }
 }
@@ -607,6 +655,14 @@ void WaitTickGetTime(void) {
     static int oldusec = -1;
     int stat;
 
+    ReadCntr();                   /* Wait for the 48 ms heartbeat */
+#if USE_SYSTEM_TIME
+    gettimeofday(&tv, &tz);
+    tmp = gmtime(&tv.tv_sec);
+    tsshm->msec = ((tmp->tm_hour * 60 + tmp->tm_min) * 60 + tmp->tm_sec) *
+   	 1000 + (tv.tv_usec + 500) / 1000;
+    tsshm->day = tmp->tm_yday;
+#else /* USE_SYSTEM_TIME */
     /* get the current time in any case */
     if((stat = read(ttfd, &ttime, sizeof(ttime))) < 0) {
       ErrPrintf("Error %d reading TrueTime\n", stat);
@@ -624,6 +680,8 @@ void WaitTickGetTime(void) {
     tsshm->msec = ((ttime.hour * 60 + ttime.min) * 60 + ttime.sec) * 1000 +
                   (ttime.usec + 500) / 1000;
     tsshm->day = ttime.yday;
+#endif /* USE_SYSTEM_TIME */
+    ddprintf("day %d msec %d\n", tsshm->day, tsshm->msec);
 }
 
 void GetACUPosAndStatus(void) {
@@ -670,4 +728,5 @@ void ErrPrintf(char *s, ...) {
   vsprintf(buf, s, ap);
   va_end(ap);
   fputs(buf, stderr);
+  fflush(stderr);
 }

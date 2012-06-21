@@ -9,12 +9,13 @@ CFLAGS=-c -O -Wall -Iinclude
 VMESG=$(COMMON)/vme_sg_simple
 IP480INC=$(ACCAPP)/iP480/include
 NSINC=$(NEWSERVO)/include
+DSMLIB=$(COMMONLIB)/libdsm.a
 MONINC=$(HALAPP)/cursesmonitor
 ANTPAGE2=/usr/PowerPC/applications/hal/cursesmonitor/antPage2.o
 DSMLD= $(COMMONLIB)/libdsm.a -lrpc -lnetinet
 #NSINCLUDES=$(NSINC)/s_cmd2.h $(NSINC)/s_anti96com.h $(NSINC)/s_constants.h \
 #	$(NSINC)/palmpilot.h
-#SOURCES=servo.c svdata.c dmytrack.c tsshmdump.c rmtsshm.c tracking_err.c \
+
 #	readtt.c rmvalue.c drivemon.c rmdrivemon.c rmsubs.c \
 #	readencoders.c monitortt.c ttalarmcheck.c recordencoders.c \
 #	checktrcmds.c readsc32.c $(NEWSERVO)/s_anti96com.c createtsshm.c
@@ -38,7 +39,7 @@ all: $(BINS) #$(COMMONINC)/tsshm.h
 $(BINDIR)/servo: servo.o openshm.o canbus.o heartbeat.o dsmsubs.o \
 	 checktrcmds.o $(COMMONLIB)/commonLib
 	$(CC) -o $(BINDIR)/servo servo.o openshm.o $(COMMONLIB)/commonLib \
-	checktrcmds.o canbus.o dsmsubs.o heartbeat.o -lrpc -lnetinet
+	checktrcmds.o canbus.o dsmsubs.o heartbeat.o $(DSMLD)
 
 servo.o:
 	$(CC) $(CFLAGS) -DSIMULATING=0 -DSLOW=0 -I$(GLOBALINC) \

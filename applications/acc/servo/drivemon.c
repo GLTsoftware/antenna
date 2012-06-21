@@ -110,17 +110,27 @@ int main(int argc, char *argv[]) {
 			"in control\n");
 	}
 	line = 2;
-	mvprintw(line++, 4, "%4s %9.4f %7.4f | %4s %9.4f %9.4f %8.3f %10.4f\n",
+	mvprintw(line++, 4, "%4s %9.4f %7.4f | %4d %9.4f %9.4f %8.3f %10.4f\n",
 	    (tsshm->azCmd)? "on ": "off", tsshm->az/MSEC_PER_DEG,
 	    tsshm->azVel/MSEC_PER_DEG,
-	    (tsshm->azState)? "on ": "off", tsshm->cmdAz/MSEC_PER_DEG,
+#if 0
+	    (tsshm->azState)? "on ": "off",
+#else
+	    tsshm->azState,
+#endif
+	    tsshm->cmdAz/MSEC_PER_DEG,
 	    (double)tsshm->encAz/MSEC_PER_DEG,
 	    (double)tsshm->limAz/MSEC_PER_DEG,
 	    (double)tsshm->azTrError/MSEC_PER_DEG);
-	mvprintw(line++, 4, "%4s %9.4f %7.4f | %4s %9.4f %9.4f %8.3f %10.4f\n",
+	mvprintw(line++, 4, "%4s %9.4f %7.4f | %4d %9.4f %9.4f %8.3f %10.4f\n",
 	    (tsshm->elCmd)? "on ": "off", tsshm->el/MSEC_PER_DEG,
 	    tsshm->elVel/MSEC_PER_DEG,
-	    (tsshm->elState)? "on ": "off", tsshm->cmdEl/MSEC_PER_DEG,
+#if 0
+	    (tsshm->elState)? "on ": "off",
+#else
+	    tsshm->elState,
+#endif
+	    tsshm->cmdEl/MSEC_PER_DEG,
 	    (double)tsshm->encEl/MSEC_PER_DEG,
 	    (double)tsshm->limEl/MSEC_PER_DEG,
 	    (double)tsshm->elTrError/MSEC_PER_DEG);
