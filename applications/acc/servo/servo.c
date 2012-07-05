@@ -53,7 +53,7 @@ void bzero(void *s, int n);	/* This should be in string.h, but isn't */
 #define TO_SHUTDOWN_CNT 100  /* 5 sec */
 #define TO_STANDBY_CNT 100  /* 5 sec */
 #define TO_ACTIVE_CNT 100
-#define TO_STOP_CNT 200
+#define TO_STOP_CNT 40
 
 int auxCycle;	/* Sub cycle number for doing infrequent tasks */
 
@@ -147,7 +147,7 @@ void servoUsage(char *programName) {
 }
 
 int main(int argc, char *argv[]) {
-  int i;
+  int i,dsm_status;
   enum DRVSTATE oldAzState, oldElState;
   char msg[80];
 
@@ -235,7 +235,16 @@ int main(int argc, char *argv[]) {
   dprintf("Counter, ");
   SetupCanBus();
   dprintf("Canbus, ");
+/*
   SafeOpenDsm();
+*/
+/* Since SafeOpenDsm() did not work, I am adding dsm_open here... NAP 26June12*/
+   dsm_status = dsm_open();
+   if(dsm_status != DSM_SUCCESS) {
+    dsm_error_message(dsm_status, "dsm_open failed.");
+    exit(-1);
+  }
+
   dprintf("Dsm, ");
   WriteDsmMonitorPoints();
   dprintf("Monitor points, ");
@@ -405,13 +414,17 @@ int main(int argc, char *argv[]) {
       static double ssq = 0;
 
       /* Instantaneous az error (commanded - actual) */
-      azTrErrorArcSec = (double)tsshm->azTrError *
+      azTrErrorArcSec = (float)tsshm->azTrError *
                         cos(RAD_PER_MAS * (trEl + trElVel * dt)) * 0.001;
       ssq += azTrErrorArcSec * azTrErrorArcSec;
-      elTrErrorArcSec = (double)tsshm->elTrError * 0.001;
+      elTrErrorArcSec = (float)tsshm->elTrError * 0.001;
       ssq += elTrErrorArcSec * elTrErrorArcSec;
+
+/* commenting out the following dsm_write since these are now in dsmsub.h
       dsm_write(dsm_host, "DSM_AZ_TRACKING_ERROR_F", &azTrErrorArcSec);
       dsm_write(dsm_host, "DSM_EL_TRACKING_ERROR_F", &elTrErrorArcSec);
+*/
+
       if(auxCycle == 99) {
         static int trErrCnt = 0;
         static char m[] = "Tracking error is excessive";
@@ -447,11 +460,11 @@ static void AzCycle(void) {
   switch(azState) {
   case SERVOOFF:
     break;
-  /* The normal entry to SHUTDOWN1 will be when the drive is either in
+  /* The normal entry to STARTING1 will be when the drive is either in
    * SHUTDOWN or STANDBY mode.  In that case set azCnt to 0.  If the
    * drive is in SHUTDOWN mode, STANDBY will be requested before
-   * passing to STANDBY2, otherwise that will happen immediately.
-   * When entering STANDBY1 from a failed start attempt, set azCnt to a
+   * passing to STARTING2, otherwise that will happen immediately.
+   * When entering STARTING1 from a failed start attempt, set azCnt to a
    * positive number to wait for the drive to reach SHUTDOWN mode before
    * commanding STANDBY again. */
   case STARTING1:
@@ -536,8 +549,8 @@ static void AzCycle(void) {
       break;
     }
     /* Issue the next tracking command */
-    nxtAz[0] = (trAz + trAzVel*(dt + HEARTBEAT_PERIOD)) / ACU_TURNS_TO_MAS;
-    nxtAz[1] = (trAz + trAzVel*(dt + 2*HEARTBEAT_PERIOD)) / ACU_TURNS_TO_MAS;
+    nxtAz[0] = (trAz + trAzVel*(dt + 2*HEARTBEAT_PERIOD)) / ACU_TURNS_TO_MAS;
+    nxtAz[1] = (trAz + trAzVel*(dt + 3*HEARTBEAT_PERIOD)) / ACU_TURNS_TO_MAS;
     SetCANValue(AZ_TRAJ_CMD, nxtAz, 8);
   }
 }
@@ -546,11 +559,11 @@ static void ElCycle(void) {
   switch(elState) {
   case SERVOOFF:
     break;
-  /* The normal entry to SHUTDOWN1 will be when the drive is either in
+  /* The normal entry to STARTING1 will be when the drive is either in
    * SHUTDOWN or STANDBY mode.  In that case set elCnt to 0.  If the
    * drive is in SHUTDOWN mode, STANDBY will be requested before
-   * passing to STANDBY2, otherwise that will happen immediately.
-   * When entering STANDBY1 from a failed start attempt, set elCnt to a
+   * passing to STARTING2, otherwise that will happen immediately.
+   * When entering STARTING1 from a failed start attempt, set elCnt to a
    * positive number to wait for the drive to reach SHUTDOWN mode before
    * commanding STANDBY again. */
   case STARTING1:
@@ -627,8 +640,8 @@ static void ElCycle(void) {
       break;
     }
     /* Issue the next tracking command */
-    nxtEl[0] = (trEl + trElVel*(dt + HEARTBEAT_PERIOD)) / ACU_TURNS_TO_MAS;
-    nxtEl[1] = (trEl + trElVel*(dt + 2*HEARTBEAT_PERIOD)) / ACU_TURNS_TO_MAS;
+    nxtEl[0] = (trEl + trElVel*(dt + 2*HEARTBEAT_PERIOD)) / ACU_TURNS_TO_MAS;
+    nxtEl[1] = (trEl + trElVel*(dt + 3*HEARTBEAT_PERIOD)) / ACU_TURNS_TO_MAS;
     SetCANValue(EL_TRAJ_CMD, nxtEl, 8);
   }
 }
