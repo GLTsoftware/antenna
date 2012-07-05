@@ -17,7 +17,7 @@
 #include "canbus.h"
 
 int dsm_open_status;
-char dsm_host[] = "obscon";
+char dsm_host[] = "gltobscon";
 
 #if 0
     DSM_ACU_MODE_V3_B           # Modified, the bytes are Az mode, El mode, 
@@ -69,8 +69,10 @@ void SafeOpenDsm(void) {
 }
 
 void WriteDsmMonitorPoints(void) {
-  int i;
+  int i,dsm_status;
   char buf[8];
+ 
+  extern float azTrErrorArcSec,elTrErrorArcSec;
 
   if(dsm_open_status != DSM_SUCCESS) {
     return;
@@ -80,4 +82,6 @@ void WriteDsmMonitorPoints(void) {
       dsm_write(dsm_host, mptab[i].dsm_name, buf);
     }
   }
+  dsm_status=dsm_write("gltobscon", "DSM_AZ_TRACKING_ERROR_F", &azTrErrorArcSec);
+  dsm_status=dsm_write("gltobscon", "DSM_EL_TRACKING_ERROR_F", &elTrErrorArcSec);  
 }
