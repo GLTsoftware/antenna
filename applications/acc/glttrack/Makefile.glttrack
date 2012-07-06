@@ -1,7 +1,5 @@
 #COMMONLIB = /common/lib
 #COMMONINC = /common/include
-#GLOBALINC = /global/include
-#ACCAPP = /applications/acc/
 CC = gcc -g -Wall
 BIN = gltTrack
 LFLAGS = -L$(COMMONLIB)
