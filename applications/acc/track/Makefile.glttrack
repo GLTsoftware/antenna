@@ -15,7 +15,7 @@ gltTrack: glttrack.o local.o mount.o Refract.o solsys2.o readeph0.o \
 	novas.o novascon.o pleph2.o 
 	$(CC) -o $(BIN) $(OBJ) $(LIB) ${LFLAGS}
 
-glttrack.o: glttrack.c
+glttrack.o: glttrack.c antennaPosition.h
 	$(CC) -c glttrack.c  $(INC)
 
 local.o: local.c

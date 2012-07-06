@@ -178,7 +178,7 @@ int	cal_flag=0;
 
 int main(int argc, char *argv[]) {
 
-    FILE            *fp_mount_model,*fp_tilt,*fp_tiltdc,*fp_polar;
+    FILE            *fp_mount_model,*fp_polar;
 
     double          ra, dec, lst, lst_prev, lst_radian, lst_radian_prev;
 
@@ -254,7 +254,9 @@ int main(int argc, char *argv[]) {
 
     int             source_skip_flag = 1;
 
+/*
         int     padid=0;
+*/
 	char line[BUFSIZ];
 
     /* the following variables are from name.c */
@@ -313,7 +315,6 @@ int main(int argc, char *argv[]) {
 
     short           target_flag = 0;
     double          commanded_az=0., commanded_el=15.;
-    float          smarts_az, smarts_el;
 
 
 	short scan_unit_int;
@@ -342,16 +343,19 @@ double et_prev_big_time_step=0.,et_time_interval;
 	DAY_TYPE julianDay;
 	*/
 	
+/*
 	int device_fd,irig_status;
 	struct vme_sg_simple_time ts;
 	struct sc32_time sctime;
 	int sc32fd;
-
+*/
 
 /* for earthtilt and sidereal_time */
 	double equinoxes,tjd_upper,tjd_lower,dpsi,deps,tobl,mobl;
 	
+/*
  	float sunazf,sunelf;
+*/
 	float az_tracking_error,el_tracking_error;
 	short dummyshortint;
 	float dummyFloat;
@@ -427,16 +431,15 @@ double et_prev_big_time_step=0.,et_time_interval;
         double prev_azrate = 0.;
         double prev_elrate = 0.;
                                       
+/*
 	char antdir[10];
+*/
 	
 	int azelCommandFlag=0;
 
 	double pos1950[3],pos2000[3];
 
-	 /* timestamp for ders */
-        int timestamp;
-
-	int subcorflag=0; /* whether to correct subref Y,Z vs el */
+        time_t timestamp;
 
 	double museconds;
 	
@@ -444,8 +447,6 @@ double et_prev_big_time_step=0.,et_time_interval;
 	double polar_dx,polar_dy;
 
 	
-	short padid_disp=0;
-
 	double raOffset=0.0;
 	double decOffset=0.0;
 	double cosdec=1.0;
@@ -463,18 +464,10 @@ double et_prev_big_time_step=0.,et_time_interval;
 	int corruptedMountModelFile=0;
 	int end_of_file=0;
 
-	char junkstring[256];
-	
-	short disableDrivesFlag=0;
-
+/*
 	double sundistance=0.;
-	
-	int logTiltsTS;
-	int logTiltsRunning=0;
-	int logTiltsErrorMsgSent=0;
+*/
 
-	short rmTiltFlagBits=0;
-	
     /* END OF VARIABLE DECLARATIONS */
 
     /********Initializations**************************/
@@ -561,12 +554,14 @@ DAEMONSET
                 exit(QUIT_RTN);
         }
 
+#if 0
 	/* start listening to ref. mem. interrupts for higher-level commands*/
 	dsm_status=dsm_monitor(DSM_HOST,"DSM_COMMAND_FLAG_S");
                 if(dsm_status != DSM_SUCCESS) {
                 dsm_error_message(dsm_status,"dsm_monitor()");
                 exit(1);
                 }
+#endif 
  
 	pthread_attr_init(&attr);
 	if (pthread_create(&CommandHandlerTID, &attr, CommandHandler,
@@ -798,7 +793,6 @@ new_source:
 		dsm_status=dsm_read(DSM_HOST,"DSM_CMD_EPOCH_YEAR_D",&dummyDouble,&timeStamp);
 		epoch=(float)dummyDouble;
 		dsm_status=dsm_read(DSM_HOST,"DSM_CMD_SVEL_KMPS_D",&sourceVelocity,&timeStamp);
-		strcpy(sname,newCmdSourceName);
 
 		dec_cat =  dec_cat + decOffset/3600.;
 		cosdec=cos(dec_cat*radian);
@@ -864,8 +858,10 @@ new_source:
 
 	dsm_status=dsm_read(DSM_HOST,"DSM_AZOFF_ARCSEC_D",&azoff,&timeStamp);	
 	dsm_status=dsm_read(DSM_HOST,"DSM_ELOFF_ARCSEC_D",&eloff,&timeStamp);	
+/*
 	dsm_status=dsm_read(DSM_HOST,"DSM_RAOFF_ARCSEC_D",&raOffset,&timeStamp);
 	dsm_status=dsm_read(DSM_HOST,"DSM_DECOFF_ARCSEC_D",&decOffset,&timeStamp);
+*/
 
 
     /*
@@ -1047,6 +1043,7 @@ razmodelrms,reldc,relsag,reaztilt_sin,reaztilt_cos,reaztilt_sin2,reaztilt_cos2,r
 */
 
 
+#if 0
 	/* get sun's position */
 
 	dsm_status=dsm_read(DSM_HOST,"DSM_SUN_AZ_DEG_F",&sunazf,&timeStamp);
@@ -1056,6 +1053,7 @@ razmodelrms,reldc,relsag,reaztilt_sin,reaztilt_cos,reaztilt_sin2,reaztilt_cos2,r
 	dsm_status=dsm_read(DSM_HOST,"DSM_SUN_EL_DEG_F",&sunelf,&timeStamp);
 	sunel=(double)sunelf;
 	sunel=sunel*radian;
+#endif
 
 
 	if (source_skip_flag == 1) {
@@ -1126,6 +1124,11 @@ razmodelrms,reldc,relsag,reaztilt_sin,reaztilt_cos,reaztilt_sin2,reaztilt_cos2,r
 		museconds = tv.tv_usec;
 	   tjd_upper = (double)((int)(365.25*((tm->tm_year+1900)+4711))) + 
 			(double)tm->tm_yday + 351.5;
+/* bug in tjd calculation- or time reading. Off by one day: adjusting by
+adding a day ...*/
+
+tjd_upper += 1.0;
+
 /*
 printf("tjd_upper: %f, year: %d , day: %d\n",tjd_upper,tm->tm_year,tm->tm_yday);
 printf(" %d:%02d:%02d %d \n", tm->tm_hour, tm->tm_min,tm->tm_sec, tv.tv_usec);
@@ -1343,6 +1346,7 @@ printf("tjd_disp=%d\n",tjd_disp);
 	    }			/* ((app_pos_flag == 1) || (icount == 1)) */
 	}			/* if target_flag=0 */
 
+#if 0
 	/* read the weather parameters from ref. mem. */
 	dsm_status=dsm_read(DSM_HOST,"DSM_WEATHER_TEMP_F",&temperature,&timeStamp);
 	dsm_status=dsm_read(DSM_HOST,"DSM_WEATHER_HUMIDITY_F",&humidity,&timeStamp);
@@ -1364,6 +1368,15 @@ printf("tjd_disp=%d\n",tjd_disp);
 		SendMessageToDSM(messg);
 
 	}
+#endif
+/* Putting fiducial values of weather for now-
+*/
+	temperature = 35.0; /* C */
+	pressure = 1015.5 ; /* mbar */
+	humidity = 14.0; /* % */
+	windspeed = 0.0;
+	winddirection = 0.0;
+
 	/*
 	 * ra and dec in hours and degrees, apparent coordinates output from
 	 * stars or planets functions are converted below into azimuth and
@@ -1507,6 +1520,7 @@ printf("tjd_disp=%d\n",tjd_disp);
 since these should be the true positions (also remove similarly,
 for the actual positions*/
 
+#if 0
 	/* Compare az_disp and el_disp with Sun's az and el
 	and go into simulation mode with an error message
 	if the commanded position is within SUNLIMIT degrees
@@ -1523,6 +1537,7 @@ for the actual positions*/
 		SendMessageToDSM(messg);
 	 } /* sun limit check  with commanded position */
 	
+#endif
 
 	az_disp_rm = (float)az_disp / radian;
 	el_disp_rm = (float)el_disp / radian;
@@ -1599,8 +1614,6 @@ printf("%d %d %.12f %.12f %.12f %.12f %d %d\n",icount,milliseconds,(lst_radian*2
 	/* check if servo is running */
 	if((tsshm->msec)==checkmsec) {
 	strcpy(messg,"servo is not running.");
-	strcpy(lastCommand,"Servo is not running.");
-	SendLastCommandToDSM(lastCommand);
 	}
 #endif
 
@@ -1645,7 +1658,7 @@ to the az enc value for antenna-1 at Haystack */
 new style antennas, to values reported by servo through
 shared memory */
 
-#if SERVO
+#if 0
 if ((Az_cmd>=180.*MSEC_PER_DEG)&&
 	(Az_cmd<=(tsshm->cwLimit))&&(az_actual < 90.)) 
 			{Az_cmd -= (360.*MSEC_PER_DEG);
@@ -1653,6 +1666,26 @@ if ((Az_cmd>=180.*MSEC_PER_DEG)&&
 			}
 if(Az_cmd < (tsshm->ccwLimit)) {Az_cmd += 360.*MSEC_PER_DEG;
 			if(az_disp<0.) az_disp+=2*pi;}
+
+#endif
+
+/* for GLT, the cable wrap logic needs different parameters:
+Azimuth cable wrap neutral point is 0 deg instead of 90 deg as in SMA.
+Azimuth minus end is at -270 deg instead of -180 deg for SMA.
+Azimuth plus end is at +270 deg instead of +360 deg for SMA.
+Allowing 10 deg for other limits, and hardcoding the numbers since 
+servo doest not yet have the cwand ccwLimit values in tsshm.*/
+/* 22 June 2012*/
+
+#if SERVO
+if (Az_cmd>260.*MSEC_PER_DEG)
+                        {Az_cmd -= (360.*MSEC_PER_DEG);
+                        az_disp-=(2*pi);
+                        }
+if(Az_cmd < -260.*MSEC_PER_DEG) 
+			{Az_cmd += 360.*MSEC_PER_DEG;
+                        if(az_disp<0.) az_disp+=2*pi;
+			}
 
 #endif
 
@@ -1677,6 +1710,10 @@ if(Az_cmd < (tsshm->ccwLimit)) {Az_cmd += 360.*MSEC_PER_DEG;
 	
         az_tracking_error=(float)az_error *3600.;
         el_tracking_error=(float)el_error *3600.;
+
+/*
+printf("azerror=%f elerror=%f\n",az_tracking_error,el_tracking_error);
+*/
 
 
 /*********** compute the running average of tracking errors (c. katz)*****/
@@ -1778,10 +1815,11 @@ spectroscopy in position switching mode */
 
 	servomilliseconds=tsshm->msec;
 
+#if 0
 	/* check for bad values of position*/
 	if(Az_cmd < (tsshm->ccwLimit)) Az_cmd+=(360.*MSEC_PER_DEG);
 	if(Az_cmd > (tsshm->cwLimit)) Az_cmd-=(360.*MSEC_PER_DEG);
-
+#endif
 
                 tsshm->az = Az_cmd;
                 tsshm->azVel = Az_cmd_rate;
@@ -1867,11 +1905,13 @@ if(sun_avoid_flag==1) {
             }                   
 #endif
 
+/*
           	dsm_status=dsm_clear_monitor();
                 if(dsm_status != DSM_SUCCESS) {
                 dsm_error_message(dsm_status,"dsmm_clear()");
                 exit(1);
                 }
+*/
 	    fprintf(stderr,"\nReceived signal: %d. Exiting track. Bye.\n",
 			receivedSignal);
             dsm_close();
@@ -1913,6 +1953,10 @@ if(sun_avoid_flag==1) {
 	strcpy(lastCommand,"Azoff commanded ");
 	SendLastCommandToDSM(lastCommand);
         dsm_status=dsm_read(DSM_HOST,"DSM_COMMANDED_AZOFF_ARCSEC_D",&azoff,&timeStamp);
+          if (dsm_status != DSM_SUCCESS) {
+          dsm_error_message(dsm_status,"dsm_read(DSM_COMMANDED_AZOFF_ARCSEC_D)");
+          }
+	dsm_status=dsm_write(DSM_HOST,"DSM_AZOFF_ARCSEC_D",&azoff);
 	az_offset_flag=1;
 		user = -1;
 	break;
@@ -1934,6 +1978,7 @@ for holography mapping */
 	strcpy(lastCommand,"Eloff commanded ");
 	SendLastCommandToDSM(lastCommand);
         dsm_status=dsm_read(DSM_HOST,"DSM_COMMANDED_ELOFF_ARCSEC_D",&eloff,&timeStamp);
+	dsm_status=dsm_write(DSM_HOST,"DSM_ELOFF_ARCSEC_D",&eloff);
         el_offset_flag=1;
 		user = -1;
 	break;
@@ -1941,8 +1986,8 @@ for holography mapping */
 	case 'T':
 	strcpy(lastCommand,"Az commanded ");
 	SendLastCommandToDSM(lastCommand);
-        dsm_status=dsm_read(DSM_HOST,"DSM_COMMANDED_AZ_DEG_D",&commanded_az,&timeStamp);
-        dsm_status=dsm_read(DSM_HOST,"DSM_COMMANDED_EL_DEG_D",&commanded_el,&timeStamp);
+        dsm_status=dsm_read(DSM_HOST,"DSM_COMMANDED_TAZ_DEG_D",&commanded_az,&timeStamp);
+        dsm_status=dsm_read(DSM_HOST,"DSM_COMMANDED_TEL_DEG_D",&commanded_el,&timeStamp);
 	azelCommandFlag=1;
 
 		icount=0;
@@ -2060,9 +2105,18 @@ for holography mapping */
 	dsm_status=dsm_read(DSM_HOST,"DSM_SOURCE_LENGTH_S",&slength,&timeStamp);
 
 	dsm_status=dsm_read(DSM_HOST,"DSM_SOURCE_C34", sname,&timeStamp);
+ 	 if (dsm_status != DSM_SUCCESS) {
+         dsm_error_message(dsm_status,"dsm_read(DSM_SOURCE_C34)");
+         }
+
 	azelCommandFlag=0;
 
 	dsm_status=dsm_read(DSM_HOST,"DSM_CMD_SOURCE_FLAG_L", &newSourceFlag,&timeStamp);
+ 	 if (dsm_status != DSM_SUCCESS) {
+         dsm_error_message(dsm_status,"dsm_read(DSM_CMD_SOURCE_FLAG_L)");
+         }
+
+
 	if(newSourceFlag==1) sol_sys_flag=0;
 
 		icount=0;
@@ -2260,7 +2314,9 @@ to RM ealier */
 	 dummyByte=(char)radio_flag;
 	dsm_status=dsm_write(DSM_HOST,"DSM_REFRACTION_RADIO_FLAG_B",&dummyByte);
 
+/*
 	    ret = dsm_status=dsm_write(DSM_HOST,"DSM_SOURCE_C34",sname);
+*/
 
 	lst_disp_float=(float)lst_disp;
 	utc_disp_float=(float)utc_disp;
@@ -2280,8 +2336,8 @@ to RM ealier */
 	az_actual_corrected_rm=(float)az_actual_corrected;
 	dsm_status=dsm_write(DSM_HOST,"DSM_ACTUAL_AZ_DEG_F",&az_actual_corrected_rm);
 	dsm_status=dsm_write(DSM_HOST,"DSM_ACTUAL_EL_DEG_F",&el_actual_disp_rm);
-	dsm_status=dsm_write(DSM_HOST,"DSM_PMDAZ_ARCSEC_F",&pmdaz);
-	dsm_status=dsm_write(DSM_HOST,"DSM_PMDEL_ARCSEC_F",&pmdel);
+	dsm_status=dsm_write(DSM_HOST,"DSM_PMDAZ_F",&pmdaz);
+	dsm_status=dsm_write(DSM_HOST,"DSM_PMDEL_F",&pmdel);
 
 	fflush(stdout);
 
@@ -2293,6 +2349,9 @@ to RM ealier */
   /* timestamp for DERS etc..*/
         dsm_status=dsm_read(DSM_HOST,"DSM_UNIX_TIME_L",&timestamp,&timeStamp);
         dsm_status=dsm_write(DSM_HOST,"DSM_TRACK_TIMESTAMP_L",&timestamp);
+/*
+printf("%d\n",timestamp);
+*/
 
 /*debug
 fprintf(fp_debug, "%lf %lf %lf %lf %lf %lf %lf %lf\n",
@@ -2648,19 +2707,16 @@ replacing read_wait by read for now.
 	dsm_status=dsm_read_wait("gltobscon","DSM_COMMAND_FLAG_S",&command_flag);
 */
 	dsm_status=dsm_read("gltobscon","DSM_COMMAND_FLAG_S",&command_flag,&timeStamp);
-
         if(dsm_status != DSM_SUCCESS) {
                 dsm_error_message(dsm_status,"dsm_read_wait()");
                 exit(1);
-
+/*
         fprintf(stderr,"Interrupt received. command_flag=%d\n",command_flag);
 	fflush(stderr);
-
-	sleep(1);
+*/
 	}
 	
-	if(command_flag==0)
-	{
+	if(command_flag==0) {
 	dsm_status=dsm_read(DSM_HOST,"DSM_COMMANDED_TRACK_COMMAND_C30",command,&timeStamp);
         if(dsm_status != DSM_SUCCESS) {
                 dsm_error_message(dsm_status,"dsm_read()");
@@ -2669,10 +2725,18 @@ replacing read_wait by read for now.
 
         user=(int)command[0];
 	interrupt_command_flag=1;
-	}
 
-/* for read_wait replaced by read */
-sleep(1);
+	command_flag=1;
+	dsm_status=dsm_write("gltobscon","DSM_COMMAND_FLAG_S",&command_flag);
+        if(dsm_status != DSM_SUCCESS) {
+                dsm_error_message(dsm_status,"dsm_write()");
+                exit(1);
+	}
+	
+	} /* if command flag is zero, handle command and set it back to 1 */
+
+	sleep(1);
+
 	} /* while */
 
 	pthread_detach(CommandHandlerTID);
