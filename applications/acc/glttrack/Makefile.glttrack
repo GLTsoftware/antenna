@@ -1,0 +1,43 @@
+#COMMONLIB = /common/lib
+#COMMONINC = /common/include
+CC = gcc -g -Wall
+BIN = gltTrack
+LFLAGS = -L$(COMMONLIB)
+LIB = -ldsm -lrpc -lnetinet -lm -lcurses -llynx  -mthreads -lsmapopt
+INC = -I$(GLOBALINC) -I$(COMMONINC) -I$(COMMON)/vme_sg_simple/ -I$(ACCAPP)/servo/include/ 
+OBJ = glttrack.o local.o mount.o Refract.o solsys2.o readeph0.o \
+	novas.o novascon.o pleph2.o  $(COMMONLIB)/commonLib \
+	$(COMMONLIB)/openshm.o  $(COMMONLIB)/cspice.a
+
+all: $(BIN)
+
+gltTrack: glttrack.o local.o mount.o Refract.o solsys2.o readeph0.o \
+	novas.o novascon.o pleph2.o 
+	$(CC) -o $(BIN) $(OBJ) $(LIB) ${LFLAGS}
+
+glttrack.o: glttrack.c antennaPosition.h
+	$(CC) -c glttrack.c  $(INC)
+
+local.o: local.c
+	$(CC) -c  local.c  ${INC}
+
+Refract.o: Refract.c
+	$(CC) -c Refract.c ${INC}
+
+mount.o: mount.c
+	$(CC) -c mount.c ${INC}
+
+solsys2.o: solsys2.c
+	$(CC) -c solsys2.c
+
+readeph0.o: readeph0.c
+	$(CC) -c readeph0.c
+
+novas.o: novas.c
+	$(CC) -c novas.c
+
+novascon.o: novascon.c
+	$(CC) -c novascon.c
+
+pleph2.o: pleph2.c
+	$(CC) -c pleph2.c ${INC}
