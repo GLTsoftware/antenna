@@ -306,13 +306,16 @@ int main(int argc, char *argv[]) {
     tsshm->encAz = lastAz;
     tsshm->encEl = lastEl;
 
-#if 1
+#if 0
     CheckTrCmds();	/* Is there a new command from Track? */
-#endif
+#else
   trAz = trAzRaw = tsshm->az;
   trEl = trElRaw = tsshm->el;
   trAzVel = trAzVelRaw = tsshm->azVel;
   trElVel = trElVelRaw = tsshm->elVel;
+  trMsecCmd = tsshm->msecCmd;
+  tsshm->msecAccept = tsshm->msecCmd;
+#endif
     dt = (tsshm->msec - trMsecCmd)/1000.;
     if(dt < -3600)
       dt += 24*3600;
