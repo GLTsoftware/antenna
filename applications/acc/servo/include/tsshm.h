@@ -30,19 +30,14 @@ enum ENCTYPE {HEIDENHAIN, ACC};
 typedef struct {
 	int msec;		/* msec of the day of this sample */
 	int curAz;		/* The command to servo from Track (mas) */
-	int shpAz;		/* Servo's shaped command to the pos loop */
-	int encAz;		/* Current encoder value (mas)*/
-	int cmdAzVel;		/* Vel cmd to scb (mas/s) */
-	int tachAzVel;		/* Tach voltage cvt to Az axis vel (mas/s) */
+	int acuAz;		/* Current azimuth value from the ACU (mas)*/
+	int cmdAzVel;		/* Vel cmd to ACU (mas/s) */
+	int acuAzVel;		/* Vel from delta ACU pos for 24 ms (mas/s) */
 	int curEl;		/* The command to servo from Track (mas) */
-	int shpEl;		/* Servo's shaped command to the pos loop */
-	int encEl;		/* Current encoder value (mas)*/
-	int cmdElVel;		/* Vel cmd to scb (mas/s) */
-	int tachElVel;		/* Tach voltage cvt to el axis vel (mas/s) */
-	short azTorq;		/* Az torque cmd 32767 cnts -> 70 A/motor */
-	short elTorq;		/* El torque cmd 32767 cnts -> 70 A */
-	char azState, elState;
-	char scbStatus;
+	int acuEl;		/* Current elevation value from the ACU (mas)*/
+	int cmdElVel;		/* Vel cmd to ACU (mas/s) */
+	int acuElVel;		/* Vel from delta ACU pos for 24 ms (mas/s) */
+	char azMode, elMode;	/* As reported by the ACU */
 } SAMPLE;
 
 #ifndef SAMP_BUF_SIZE
