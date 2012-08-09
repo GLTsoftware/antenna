@@ -26,7 +26,7 @@ extern unsigned int usleep    _AP((time_t));
 
 #define MAS (3600000)
 
-static char azState = 0, elState = 0;
+static char azMode = 0, elMode = 0;
 
 void *openshm(char *name, int size);
 
@@ -80,8 +80,8 @@ int main(int argc, char *argv[]) {
 	    usleep(10000);
 	    INC_OUT;
 	    INC_OUT;
-	    azState =  SaO.azState;
-	    elState =  SaO.elState;
+	    azMode =  SaO.azMode;
+	    elMode =  SaO.elMode;
 	}
 
 	if((fp = fopen(argv[2], "w")) == NULL) {
@@ -91,7 +91,7 @@ int main(int argc, char *argv[]) {
 
 	/* If we are not starting immediately, wait for the state to change */
 	if(! started) fprintf(stderr,
-	    "Waiting for a state change from (%1d %1d)\n", azState, elState);
+	    "Waiting for a state change from (%1d %1d)\n", azMode, elMode);
 	while(! started) {
 	    if(SEMPTY) {
 		fputs("Servo has stopped\n", stderr);
@@ -99,7 +99,7 @@ int main(int argc, char *argv[]) {
 	    }
 	    while(! SEMPTY) {
 		INC_OUT;
-		if(azState != SaO.azState || elState != SaO.elState) {
+		if(azMode != SaO.azMode || elMode != SaO.elMode) {
 			started = 1;
 			break;
 		}
@@ -107,7 +107,7 @@ int main(int argc, char *argv[]) {
 	    usleep(100000);
 	}
 	fprintf(stderr, "Starting to collect data, state (%1d %1d)\n",
-		SaO.azState, SaO.elState);
+		SaO.azMode, SaO.elMode);
 	/* Now collect the data */
 	for(nextSample = 0; nextSample < nSamp; nextSample++) {
 	    if(SEMPTY) {
@@ -146,9 +146,9 @@ Column  Content
 		"% 11.5f %11.5f %8.4f %8.4f %1d"	/* El values */
 		"\n", sp->msec*0.001,
 		PO(curAz), PO(acuAz),
-		PO(cmdAzVel), PO(acuAzVel), sp->azState, 
+		PO(cmdAzVel), PO(acuAzVel), sp->azMode, 
 		PO(curEl), PO(acuEl),
-		PO(cmdElVel), PO(acuElVel), sp->elState
+		PO(cmdElVel), PO(acuElVel), sp->elMode
 	    );
 	}
 	return(0);
