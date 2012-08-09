@@ -392,7 +392,7 @@ int main(int argc, char *argv[]) {
     /* Save the data from this cycle */
     tsshm->sampIn = NEXT_SAMP(tsshm->sampIn);
     /* Set up expected positions and velocities for next data cycle */
-    SaI.curAz = trAz + trAzVel * (dt + HEARTBEAT_PERIODHEARTBEAT_PERIOD);
+    SaI.curAz = trAz + trAzVel * (dt + HEARTBEAT_PERIOD);
     SaI.cmdAzVel = trAzVel;
     SaI.curEl = trEl + trElVel * (dt + HEARTBEAT_PERIOD);
     SaI.cmdElVel = trElVel;
