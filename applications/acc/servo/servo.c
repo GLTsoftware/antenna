@@ -270,8 +270,10 @@ int main(int argc, char *argv[]) {
   dprintf("Tick and time, ");
   GetACUPosAndStatus();
   dprintf("ACU pos, status, ");
-  nxtAz[1] = nxtAz[0] = lastAz / ACU_TURNS_TO_MAS;      /* set zero velocity */
-  nxtEl[1] = nxtEl[0] = lastAz / ACU_TURNS_TO_MAS;      /* set zero velocity */
+  nxtAz[0] = lastAz / ACU_TURNS_TO_MAS;
+  nxtAz[1] = 0;      				/* set zero velocity */
+  nxtEl[0] = lastEl / ACU_TURNS_TO_MAS;
+  nxtEl[1] = 0;					/* set zero velocity */
   /* if the drives are on, set to standby, otherwise to shutdown */
   if(ACUAccessMode == REMOTE) {
     if(azDriveMode >= STANDBY) {
@@ -309,13 +311,14 @@ int main(int argc, char *argv[]) {
 #if 0
     CheckTrCmds();	/* Is there a new command from Track? */
 #else
-  trAz = trAzRaw = tsshm->az;
-  trEl = trElRaw = tsshm->el;
-  trAzVel = trAzVelRaw = tsshm->azVel;
-  trElVel = trElVelRaw = tsshm->elVel;
-  trMsecCmd = tsshm->msecCmd;
-  tsshm->msecAccept = tsshm->msecCmd;
+    trAz = trAzRaw = tsshm->az;
+    trEl = trElRaw = tsshm->el;
+    trAzVel = trAzVelRaw = tsshm->azVel;
+    trElVel = trElVelRaw = tsshm->elVel;
+    trMsecCmd = tsshm->msecCmd;
+    tsshm->msecAccept = tsshm->msecCmd;
 #endif
+    SaI.msec = tsshm->msec;
     dt = (tsshm->msec - trMsecCmd)/1000.;
     if(dt < -3600)
       dt += 24*3600;
@@ -386,6 +389,13 @@ int main(int argc, char *argv[]) {
     }
     AzCycle();
     ElCycle();
+    /* Save the data from this cycle */
+    tsshm->sampIn = NEXT_SAMP(tsshm->sampIn);
+    /* Set up expected positions and velocities for next data cycle */
+    SaI.curAz = trAz + trAzVel * (dt + HEARTBEAT_PERIODHEARTBEAT_PERIOD);
+    SaI.cmdAzVel = trAzVel;
+    SaI.curEl = trEl + trElVel * (dt + HEARTBEAT_PERIOD);
+    SaI.cmdElVel = trElVel;
 
     if(azState != oldAzState || elState != oldElState) {
       if(elState >= TRACKING && azState >= TRACKING) {
@@ -532,7 +542,7 @@ static void AzCycle(void) {
     break;
   case STOPPING1:
     dprintf("Az drive stopping\n");
-    nxtAz[1] = nxtAz[0];		/* set zero velocity */
+    nxtAz[1] = 0;		/* set zero velocity */
     azCnt = TO_STOP_CNT;
     SetCANValue(AZ_TRAJ_CMD, nxtAz, 8);
     azState = STOPPING2;
@@ -553,7 +563,7 @@ static void AzCycle(void) {
     }
     /* Issue the next tracking command */
     nxtAz[0] = (trAz + trAzVel*(dt + 2*HEARTBEAT_PERIOD)) / ACU_TURNS_TO_MAS;
-    nxtAz[1] = (trAz + trAzVel*(dt + 3*HEARTBEAT_PERIOD)) / ACU_TURNS_TO_MAS;
+    nxtAz[1] = trAzVel / ACU_TURNS_TO_MAS;
     SetCANValue(AZ_TRAJ_CMD, nxtAz, 8);
   }
 }
@@ -624,7 +634,7 @@ static void ElCycle(void) {
     }
     break;
   case STOPPING1:
-    nxtEl[1] = nxtEl[0];		/* set zero velocity */
+    nxtEl[1] = 0;		/* set zero velocity */
     elCnt = TO_STOP_CNT;
     SetCANValue(EL_TRAJ_CMD, nxtEl, 8);
     elState = STOPPING2;
@@ -644,7 +654,7 @@ static void ElCycle(void) {
     }
     /* Issue the next tracking command */
     nxtEl[0] = (trEl + trElVel*(dt + 2*HEARTBEAT_PERIOD)) / ACU_TURNS_TO_MAS;
-    nxtEl[1] = (trEl + trElVel*(dt + 3*HEARTBEAT_PERIOD)) / ACU_TURNS_TO_MAS;
+    nxtEl[1] = trElVel / ACU_TURNS_TO_MAS;
     SetCANValue(EL_TRAJ_CMD, nxtEl, 8);
   }
 }
@@ -709,16 +719,24 @@ void GetACUPosAndStatus(void) {
       elDriveMode = buf[1] = buf[0] >> 4;
       azDriveMode = buf[0] = 0xf & buf[0];
       dsm_write(dsm_host, "DSM_ACU_MODE_V3_B", buf);
+      SaI.azMode = buf[0];
+      SaI.elMode = buf[1];
   }
   if(ReadCANValue(GET_AZ_POSN, buf, 8)) {
     lastAz = (int)(ACU_TURNS_TO_MAS * *(int *)buf);
     f = ACU_TURNS_TO_DEG * *(int *)buf;
     dsm_write(dsm_host, "DSM_AZ_POSN_DEG_F", &f);
+    SaI.acuAz = lastAz;
+    SaI.acuAzVel =
+    	(int)(ACU_TURNS_TO_MAS * (*(int *)buf - *(int *)(buf+4))/0.024);
   }
   if(ReadCANValue(GET_EL_POSN, buf, 8)) {
     lastEl = (int)(ACU_TURNS_TO_MAS * *(int *)buf);
     f = ACU_TURNS_TO_DEG * *(int *)buf;
     dsm_write(dsm_host, "DSM_EL_POSN_DEG_F", &f);
+    SaI.acuEl = lastEl;
+    SaI.acuElVel =
+    	(int)(ACU_TURNS_TO_MAS * (*(int *)buf - *(int *)(buf+4))/0.024);
   }
   if(ReadCANValue(GET_ACU_ERROR, buf, 5)) {
     if((ACUError = buf[0]) != 0) {
