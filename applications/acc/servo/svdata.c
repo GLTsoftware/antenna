@@ -126,44 +126,29 @@ int main(int argc, char *argv[]) {
 /* Definition of the data columns:
 Column  Content
 1       time in seconds
-2       scb Status (bit mapped)
-3       Az command from (dmy)track
-4       Az command out of the command shaper
-5       Az from the fine encoder
-6       Az Velocity commanded by servo
-7       Az Velocity from the tachometer
-8       Az Torque in Amperes (average of the two motors)
-9       State of the Az command shaper
-10      El command from track
-11      El command out of the command shaper
-12      El from the fine encoder12
-13      El Velocity commanded by servo
-14      El Velocity from the tach
-15      El Torque (Amps)
-16      State of the El command shaper
+2       Az command from (dmy)track
+3       Az from the ACU
+4       Az Velocity commanded by servo
+5       Az Velocity from the ACU
+6       State of the ACU Az drive
+7       El command from track
+8       El from the ACU
+9       El Velocity commanded by servo
+10      El Velocity from the ACU
+11      State of the El command shaper
 */
 
 	/* Write out the data */
-#define TESTING_LIM_VS_TACH 0
 #define PO(x) sp->x*(1.0/MAS)		/* Pos and vel in degrees */
-#define TO(x) sp->x*(70./32768.0)	/* Torque in Amps */
 	for(sp = samples; sp < &samples[nextSample]; sp++) {
-	    fprintf(fp, "%7.3f %2d"
-		"% 11.5f %11.5f %11.5f %8.4f %8.4f %5.1f %1d"	/* Az values */
-		"% 11.5f %11.5f %11.5f %8.4f %8.4f %5.1f %1d"	/* El values */
-		"\n", sp->msec*0.001, sp->scbStatus,
-		PO(curAz), PO(shpAz), PO(encAz),
-#if TESTING_LIM_VS_TACH
-		PO(cmdAzVel), (double)(sp->tachAzVel), (double)(sp->azTorq), sp->azState,
-#else
-		PO(cmdAzVel), PO(tachAzVel), TO(azTorq), sp->azState, 
-#endif
-		PO(curEl), PO(shpEl), PO(encEl),
-#if TESTING_LIM_VS_TACH
-		PO(cmdElVel), (double)(sp->tachElVel), (double)(sp->elTorq), sp->elState
-#else
-		PO(cmdElVel), PO(tachElVel), TO(elTorq), sp->elState
-#endif
+	    fprintf(fp, "%7.3f "
+		"% 11.5f %11.5f %8.4f %8.4f %1d"	/* Az values */
+		"% 11.5f %11.5f %8.4f %8.4f %1d"	/* El values */
+		"\n", sp->msec*0.001,
+		PO(curAz), PO(acuAz),
+		PO(cmdAzVel), PO(acuAzVel), sp->azState, 
+		PO(curEl), PO(acuEl),
+		PO(cmdElVel), PO(acuElVel), sp->elState
 	    );
 	}
 	return(0);
