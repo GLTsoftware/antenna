@@ -1,0 +1,13 @@
+#!/bin/ksh
+# This script should be installed in some bin directory on the machine
+# from which the acc computers boot.  It will not work unless it is
+# owned by root and suid root.
+BINDIR=$ACCAPP/bin
+for i in Track servo svdata dmytrack tsshmdump createtsshm
+do
+	chown smauser $BINDIR/$i
+	chgrp smasoft $BINDIR/$i
+	chmod 6775 $BINDIR/$i
+done
+chown root $BINDIR/rmtsshm
+chmod 6775 $BINDIR/rmtsshm
